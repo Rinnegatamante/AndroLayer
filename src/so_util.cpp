@@ -6,121 +6,12 @@
  * of the MIT license.	See the LICENSE file for details.
  */
 
-#include <array>
-#include <cstdint>
-#include <cstdio>
-#include <exception>
 #include <stdlib.h>
 #include <string.h>
 
 #include "elf.h"
+#include "dynarec.h"
 #include "so_util.h"
-
-#include "dynarmic/interface/A64/a64.h"
-#include "dynarmic/interface/A64/config.h"
-
-#define MEMBLK_SIZE (32 * 1024 * 1024)
-
-using u8 = std::uint8_t;
-using u16 = std::uint16_t;
-using u32 = std::uint32_t;
-using u64 = std::uint64_t;
-
-class so_env final : public Dynarmic::A64::UserCallbacks {
-public:
-	u64 ticks_left = 0;
-	u64 total_ticks = 0;
-	u8 *memory = nullptr;
-	u64 mem_size = 0;
-
-	u64 getCyclesForInstruction(bool isThumb, u32 instruction) {
-        (void)isThumb;
-        (void)instruction;
-
-        return 1;
-    }
-
-	u8 MemoryRead8(u64 vaddr) override {
-		return memory[vaddr];
-	}
-
-	u16 MemoryRead16(u64 vaddr) override {
-		return u16(MemoryRead8(vaddr)) | u16(MemoryRead8(vaddr + 1)) << 8;
-	}
-
-	u32 MemoryRead32(u64 vaddr) override {
-		return u32(MemoryRead16(vaddr)) | u32(MemoryRead16(vaddr + 2)) << 16;
-	}
-
-	u64 MemoryRead64(u64 vaddr) override {
-		return u64(MemoryRead32(vaddr)) | u64(MemoryRead32(vaddr + 4)) << 32;
-	}
-	
-	Dynarmic::A64::Vector MemoryRead128(u64 vaddr) override {
-		Dynarmic::A64::Vector data;
-		data[0] = MemoryRead64(vaddr);
-		data[1] = MemoryRead64(vaddr + 8);
-		return data;
-	}
-
-	void MemoryWrite8(u64 vaddr, u8 value) override {
-		if (vaddr >= mem_size) {
-			return;
-		}
-		memory[vaddr] = value;
-	}
-
-	void MemoryWrite16(u64 vaddr, u16 value) override {
-		MemoryWrite8(vaddr, u8(value));
-		MemoryWrite8(vaddr + 1, u8(value >> 8));
-	}
-
-	void MemoryWrite32(u64 vaddr, u32 value) override {
-		MemoryWrite16(vaddr, u16(value));
-		MemoryWrite16(vaddr + 2, u16(value >> 16));
-	}
-
-	void MemoryWrite64(u64 vaddr, u64 value) override {
-		MemoryWrite32(vaddr, u32(value));
-		MemoryWrite32(vaddr + 4, u32(value >> 32));
-	}
-	
-	void MemoryWrite128(u64 vaddr, Dynarmic::A64::Vector value) override {
-		MemoryWrite64(vaddr, value[0]);
-		MemoryWrite64(vaddr + 8, value[1]);
-    }
-
-	void InterpreterFallback(u64 pc, size_t num_instructions) override {
-		// This is never called in practice.
-		std::terminate();
-	}
-
-	void CallSVC(u32 swi) override {
-		// Do something.
-	}
-
-	void ExceptionRaised(u64 pc, Dynarmic::A64::Exception exception) override {
-		// Do something.
-	}
-
-	void AddTicks(u64 ticks) override {
-		total_ticks += ticks;
-		
-		if (ticks > ticks_left) {
-			ticks_left = 0;
-			return;
-		}
-		ticks_left -= ticks;
-	}
-
-	u64 GetTicksRemaining() override {
-		return ticks_left;
-	}
-	
-	u64 GetCNTPCT() override {
-        return total_ticks;
-    }
-};
 
 so_env so_dynarec_env;
 Dynarmic::A64::Jit *so_dynarec = nullptr;
@@ -187,7 +78,7 @@ void so_free_temp(void) {
 	so_base = NULL;
 }
 
-int so_load(const char *filename, void *base, size_t max_size) {
+int so_load(const char *filename, void **base_addr) {
 	int res = 0;
 	size_t so_size = 0;
 	int text_segno = -1;
@@ -240,21 +131,22 @@ int so_load(const char *filename, void *base, size_t max_size) {
 
 	// align total size to page size
 	load_size = ALIGN_MEM(load_size, 0x1000);
-	if (load_size > max_size) {
+	if (load_size > DYNAREC_MEMBLK_SIZE) {
 		res = -3;
 		goto err_free_so;
 	}
 
 	// allocate space for all load segments (align to page size)
-	// TODO: find out a way to allocate memory that doesn't fuck with the heap
-	load_base = base;
-	if (!load_base) goto err_free_so;
+	load_base = malloc(load_size);
+	*base_addr = load_base;
+	if (!load_base)
+		goto err_free_so;
 	memset(load_base, 0, load_size);
 
-	// reserve virtual memory space for the entire LOAD zone while we're fucking with the ELF
+	// reserve virtual memory space for the entire LOAD zone while we're dealing with the ELF
 	if (so_dynarec_env.mem_size == 0) {
-		so_dynarec_env.mem_size = MEMBLK_SIZE;
-		so_dynarec_env.memory = (u8 *)malloc(MEMBLK_SIZE);
+		so_dynarec_env.mem_size = DYNAREC_MEMBLK_SIZE;
+		so_dynarec_env.memory = (std::uint8_t *)malloc(DYNAREC_MEMBLK_SIZE);
 	}
 	
 	load_virtbase = so_dynarec_env.memory;
@@ -266,14 +158,14 @@ int so_load(const char *filename, void *base, size_t max_size) {
 	// text
 	text_size = prog_hdr[text_segno].p_memsz;
 	text_virtbase = (void *)(prog_hdr[text_segno].p_vaddr + (Elf64_Addr)load_virtbase);
-	text_base =		 (void *)(prog_hdr[text_segno].p_vaddr + (Elf64_Addr)load_base);
+	text_base = (void *)(prog_hdr[text_segno].p_vaddr + (Elf64_Addr)load_base);
 	prog_hdr[text_segno].p_vaddr = (Elf64_Addr)text_virtbase;
 	memcpy(text_base, (void *)((uintptr_t)so_base + prog_hdr[text_segno].p_offset), prog_hdr[text_segno].p_filesz);
 
 	// data
 	data_size = prog_hdr[data_segno].p_memsz;
 	data_virtbase = (void *)(prog_hdr[data_segno].p_vaddr + (Elf64_Addr)load_virtbase);
-	data_base		 = (void *)(prog_hdr[data_segno].p_vaddr + (Elf64_Addr)load_base);
+	data_base = (void *)(prog_hdr[data_segno].p_vaddr + (Elf64_Addr)load_base);
 	prog_hdr[data_segno].p_vaddr = (Elf64_Addr)data_virtbase;
 	memcpy(data_base, (void *)((uintptr_t)so_base + prog_hdr[data_segno].p_offset), prog_hdr[data_segno].p_filesz);
 
@@ -351,6 +243,7 @@ int so_resolve(DynLibFunction *funcs, int num_funcs, int taint_missing_imports) 
 		if (strcmp(sh_name, ".rela.dyn") == 0 || strcmp(sh_name, ".rela.plt") == 0) {
 			Elf64_Rela *rels = (Elf64_Rela *)((uintptr_t)text_base + sec_hdr[i].sh_addr);
 			for (int j = 0; j < sec_hdr[i].sh_size / sizeof(Elf64_Rela); j++) {
+				bool resolved = false;
 				uintptr_t *ptr = (uintptr_t *)((uintptr_t)text_base + rels[j].r_offset);
 				Elf64_Sym *sym = &syms[ELF64_R_SYM(rels[j].r_info)];
 
@@ -368,8 +261,13 @@ int so_resolve(DynLibFunction *funcs, int num_funcs, int taint_missing_imports) 
 							for (int k = 0; k < num_funcs; k++) {
 								if (strcmp(name, funcs[k].symbol) == 0) {
 									*ptr = funcs[k].func;
+									resolved = true;
 									break;
 								}
+							}
+							
+							if (!resolved) {
+								printf("Unresolved import: %s\n", name);
 							}
 						}
 
