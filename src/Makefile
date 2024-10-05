@@ -11,13 +11,13 @@ OBJS = \
 	main.o \
 	glad/glad.o
 
-CFLAGS = -O3
+CXXFLAGS = -O3 -fpermissive
 
 CXX = g++
 CC = gcc
 
 $(TARGET).exe: $(OBJS)
-	$(CXX) $(CFLAGS) $^ $(LIBS) -o $@
+	$(CXX) $(CXXFLAGS) $^ $(LIBS) -o $@
 	
 clean:
 	@rm -rf $(TARGET).exe $(OBJS)

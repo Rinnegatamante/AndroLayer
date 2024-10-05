@@ -9,10 +9,10 @@
 #include "so_util.h"
 #include "port.h"
 
-GLFWwindow *window = nullptr;
+GLFWwindow *glfw_window = nullptr;
 void *dynarec_base_addr = nullptr;
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height){
+void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
     glViewport(0, 0, width, height);
 } 
 
@@ -23,13 +23,13 @@ bool initOpenGL(int major_ver, int minor_ver) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, minor_ver);
 
     // Create a window
-    window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "AndroLayer", NULL, NULL);
-    if (window == NULL) {
+    glfw_window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "AndroLayer", NULL, NULL);
+    if (glfw_window == NULL) {
         printf("Failed to create glfw3 window\n");
         glfwTerminate();
         return false;
     }
-    glfwMakeContextCurrent(window);
+    glfwMakeContextCurrent(glfw_window);
 
     // Load GL functions via glfw3
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
@@ -38,7 +38,7 @@ bool initOpenGL(int major_ver, int minor_ver) {
     }    
 
     // Adjust viewport size to window size
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    glfwSetFramebufferSizeCallback(glfw_window, framebuffer_size_callback);
 	
 	return true;
 }
@@ -79,32 +79,45 @@ int main(int argc, char** argv) {
 
 void setupDynarec() {
 	Dynarmic::A64::UserConfig user_config;
-    user_config.callbacks = &so_dynarec_env;
+	user_config.callbacks = &so_dynarec_env;
 	so_dynarec = new Dynarmic::A64::Jit(user_config);
 	printf("AARCH64 dynarec inited with address: 0x%x\n", so_dynarec);
 }
 
 int main() {
 	// Initialize OpenGL
-    if (!initOpenGL(2, 1)) {
+	printf("Initializing OpenGL %d.%d...\n", OPENGL_MAJOR_VER, OPENGL_MINOR_VER);
+    if (!initOpenGL(OPENGL_MAJOR_VER, OPENGL_MINOR_VER)) {
 		printf("FATAL ERROR: OpenGL failed to be inited.\n");
 		return -1;
 	}
 	
 	// Load main game elf
+	printf("Loading %s...\n", MAIN_ELF_PATH);
 	int ret = so_load(MAIN_ELF_PATH, &dynarec_base_addr);
 	if (ret) {
 		printf("FATAL ERROR: Failed to load %s. (Errorcode: %d)\n", MAIN_ELF_PATH, ret);
 		return -1;		
 	}
 	
+	// Relocate jumps and function calls to our dynarec virtual addresses
+	printf("Executing relocations...\n");
+	so_relocate();
+	
 	// Resolve imports with native implementations
-	so_resolve(dynlib_functions, dynlib_numfunctions, 1);
+	printf("Resolving imports...\n");
+	so_resolve(dynarec_imports, dynarec_imports_num, 1);
 	
 	// Setup dynarec
+	printf("Setting up dynarec...\n");
 	setupDynarec();
 	
+	// Flush dynarec cache
+	printf("Flushing dynarec code cache...\n");
+	so_flush_caches();
+	
 	// Start dynarec
+	printf("Starting dynarec...\n");
 	ret = exec_booting_sequence(dynarec_base_addr);
 	if (ret) {
 		printf("FATAL ERROR: Booting sequence failed. (Errorcode: %d)\n", ret);
@@ -112,17 +125,12 @@ int main() {
 	}
 	
     // Main loop
-	glClearColor(0,1,0,0);
-    while (!glfwWindowShouldClose(window)) {
-
-        // render process
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the depth buffer and the color buffer
-
-        // check call events
-        glfwSwapBuffers(window);
-        glfwPollEvents();    
-    }
+	printf("Entering main loop...\n");
+	while (!ret) {
+		ret = exec_main_loop(dynarec_base_addr);
+	}
   
+	printf("Exiting with code %d\n", ret);
     glfwTerminate();    
     return 0;
 }

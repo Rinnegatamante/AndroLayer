@@ -16,7 +16,7 @@
 typedef struct {
   char *symbol;
   uintptr_t func;
-} DynLibFunction;
+} dynarec_import;
 
 extern void *text_base, *data_base;
 extern size_t text_size, data_size;
@@ -29,12 +29,12 @@ void so_flush_caches(void);
 void so_free_temp(void);
 int so_load(const char *filename, void **base_addr);
 int so_relocate(void);
-int so_resolve(DynLibFunction *funcs, int num_funcs, int taint_missing_imports);
+int so_resolve(dynarec_import *funcs, int num_funcs, int taint_missing_imports);
 void so_execute_init_array(void);
 uintptr_t so_find_addr(const char *symbol);
 uintptr_t so_find_addr_rx(const char *symbol);
 uintptr_t so_find_rel_addr(const char *symbol);
-DynLibFunction *so_find_import(DynLibFunction *funcs, int num_funcs, const char *name);
+dynarec_import *so_find_import(dynarec_import *funcs, int num_funcs, const char *name);
 int so_unload(void);
 
 #endif

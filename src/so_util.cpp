@@ -8,6 +8,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <map>
 
 #include "elf.h"
 #include "dynarec.h"
@@ -137,19 +138,20 @@ int so_load(const char *filename, void **base_addr) {
 	}
 
 	// allocate space for all load segments (align to page size)
-	load_base = malloc(load_size);
+	load_base = malloc(DYNAREC_MEMBLK_SIZE);
 	*base_addr = load_base;
 	if (!load_base)
 		goto err_free_so;
-	memset(load_base, 0, load_size);
+	memset(load_base, 0, DYNAREC_MEMBLK_SIZE);
 
 	// reserve virtual memory space for the entire LOAD zone while we're dealing with the ELF
 	if (so_dynarec_env.mem_size == 0) {
+		printf("Allocating dynarec memblock of %llu bytes\n", DYNAREC_MEMBLK_SIZE);
 		so_dynarec_env.mem_size = DYNAREC_MEMBLK_SIZE;
-		so_dynarec_env.memory = (std::uint8_t *)malloc(DYNAREC_MEMBLK_SIZE);
+		so_dynarec_env.memory = load_base;
 	}
 	
-	load_virtbase = so_dynarec_env.memory;
+	load_virtbase = load_base;
 
 	printf("load base = %p\n", load_virtbase);
 
@@ -237,7 +239,12 @@ int so_relocate(void) {
 	return 0;
 }
 
-int so_resolve(DynLibFunction *funcs, int num_funcs, int taint_missing_imports) {
+typedef struct {
+	uint64_t orig_addr;
+} trampoline;
+std::map<uint64_t, trampoline> trampolines;
+
+int so_resolve(dynarec_import *funcs, int num_funcs, int taint_missing_imports) {
 	for (int i = 0; i < elf_hdr->e_shnum; i++) {
 		char *sh_name = shstrtab + sec_hdr[i].sh_name;
 		if (strcmp(sh_name, ".rela.dyn") == 0 || strcmp(sh_name, ".rela.plt") == 0) {
@@ -334,14 +341,14 @@ uintptr_t so_find_addr_rx(const char *symbol) {
 	for (int i = 0; i < num_syms; i++) {
 		char *name = dynstrtab + syms[i].st_name;
 		if (strcmp(name, symbol) == 0)
-			return (uintptr_t)text_virtbase + syms[i].st_value;
+			return (uintptr_t)syms[i].st_value;
 	}
 
 	printf("Error: could not find symbol:\n%s\n", symbol);
 	return 0;
 }
 
-DynLibFunction *so_find_import(DynLibFunction *funcs, int num_funcs, const char *name) {
+dynarec_import *so_find_import(dynarec_import *funcs, int num_funcs, const char *name) {
 	for (int i = 0; i < num_funcs; ++i)
 		if (!strcmp(funcs[i].symbol, name))
 			return &funcs[i];
