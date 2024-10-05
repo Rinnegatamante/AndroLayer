@@ -116,6 +116,10 @@ int main() {
 	printf("Flushing dynarec code cache...\n");
 	so_flush_caches();
 	
+	// Init static arrays
+	//printf("Initing static arrays...\n");
+	//so_execute_init_array();
+	
 	// Start dynarec
 	printf("Starting dynarec...\n");
 	ret = exec_booting_sequence(dynarec_base_addr);

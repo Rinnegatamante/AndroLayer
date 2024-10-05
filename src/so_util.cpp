@@ -297,8 +297,12 @@ void so_execute_init_array(void) {
 		if (strcmp(sh_name, ".init_array") == 0) {
 			int (** init_array)() = (int (**)())((uintptr_t)text_virtbase + sec_hdr[i].sh_addr);
 			for (int j = 0; j < sec_hdr[i].sh_size / 8; j++) {
-				if (init_array[j] != 0)
-					init_array[j]();
+				if (init_array[j] != 0) {
+					//printf("Initing array at 0x%x\n", (uint64_t)init_array[j] - (uint64_t)text_virtbase);
+					so_dynarec->SetPC((uint64_t)init_array[j] - (uint64_t)text_virtbase);
+					so_dynarec->Run();
+					//printf("PC is: %x\n", so_dynarec->GetPC());
+				}
 			}
 		}
 	}
