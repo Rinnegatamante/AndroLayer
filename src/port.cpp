@@ -43,11 +43,12 @@ int exec_booting_sequence(void *dynarec_base_addr) {
 	
 	uint32_t (* initGraphics)(void) = (uint32_t (*)())so_find_addr_rx("_Z12initGraphicsv");
 	uint32_t (* ShowJoystick)(int show) = (uint32_t (*)(int))so_find_addr_rx("_Z12ShowJoystickb");
-    int (* NVEventAppMain)(int argc, char *argv[]) = (int (*)(int, char *[]))so_find_addr_rx("_Z14NVEventAppMainiPPc");
+	int (* NVEventAppMain)(int argc, char *argv[]) = (int (*)(int, char *[]))so_find_addr_rx("_Z14NVEventAppMainiPPc");
 	
 	printf("----------------------\n");
 	printf("Max Payne Loader:\n");
 	printf("----------------------\n");
+	
 	if (!initGraphics || !ShowJoystick || !NVEventAppMain) {
 		printf("Failed to find required symbols\n");
 		return -1;
@@ -57,6 +58,7 @@ int exec_booting_sequence(void *dynarec_base_addr) {
 	printf("ShowJoystick: 0x%llx\n", (uint64_t)ShowJoystick);
 	printf("NVEventAppMain: 0x%llx\n", (uint64_t)NVEventAppMain);
 	
+	
 	so_dynarec->SetPC(initGraphics);
 	so_dynarec_env.ticks_left = 1;
 	so_dynarec->Run();
@@ -65,17 +67,17 @@ int exec_booting_sequence(void *dynarec_base_addr) {
 }
 
 int exec_main_loop(void *dynarec_base_addr) {
-    if (!glfwWindowShouldClose(glfw_window)) {
+	if (!glfwWindowShouldClose(glfw_window)) {
 
-        // render process
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the depth buffer and the color buffer
+		// render process
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the depth buffer and the color buffer
 
-        // check call events
-        glfwSwapBuffers(glfw_window);
-        glfwPollEvents();
+		// check call events
+		glfwSwapBuffers(glfw_window);
+		glfwPollEvents();
 		
 		return 0;
-    }
+	}
 	
 	return -1;
 }
