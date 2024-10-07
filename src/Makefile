@@ -11,7 +11,7 @@ OBJS = \
 	main.o \
 	glad/glad.o
 
-CXXFLAGS = -O3 -fpermissive
+CXXFLAGS = -O3 -fpermissive -g
 
 CXX = g++
 CC = gcc
