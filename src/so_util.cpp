@@ -1,4 +1,4 @@
-/* so_util.c -- utils to load and hook .so modules
+/* so_util.cpp -- utils to load and hook .so modules
  *
  * Copyright (C) 2024 Alessio Tosto, Andy Nguyen, fgsfds
  *
@@ -136,25 +136,23 @@ int so_load(const char *filename, void **base_addr) {
 		res = -3;
 		goto err_free_so;
 	}
+	printf("Total LOAD size: %llu bytes\n", load_size);
 
 	// allocate space for all load segments (align to page size)
+	printf("Allocating dynarec memblock of %llu bytes\n", DYNAREC_MEMBLK_SIZE);
 	load_base = malloc(DYNAREC_MEMBLK_SIZE);
 	*base_addr = load_base;
 	if (!load_base)
 		goto err_free_so;
 	memset(load_base, 0, DYNAREC_MEMBLK_SIZE);
+	load_virtbase = 0;
 
 	// reserve virtual memory space for the entire LOAD zone while we're dealing with the ELF
 	if (so_dynarec_env.mem_size == 0) {
-		printf("Allocating dynarec memblock of %llu bytes\n", DYNAREC_MEMBLK_SIZE);
 		so_dynarec_env.mem_size = DYNAREC_MEMBLK_SIZE;
 		so_dynarec_env.memory = load_base;
 	}
 	
-	load_virtbase = load_base;
-
-	printf("load base = %p\n", load_virtbase);
-
 	// copy segments to where they belong
 
 	// text
@@ -295,7 +293,7 @@ void so_execute_init_array(void) {
 	for (int i = 0; i < elf_hdr->e_shnum; i++) {
 		char *sh_name = shstrtab + sec_hdr[i].sh_name;
 		if (strcmp(sh_name, ".init_array") == 0) {
-			int (** init_array)() = (int (**)())((uintptr_t)text_virtbase + sec_hdr[i].sh_addr);
+			int (** init_array)() = (int (**)())((uintptr_t)text_base + sec_hdr[i].sh_addr);
 			for (int j = 0; j < sec_hdr[i].sh_size / 8; j++) {
 				if (init_array[j] != 0) {
 					//printf("Initing array at 0x%x\n", (uint64_t)init_array[j] - (uint64_t)text_virtbase);
