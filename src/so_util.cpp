@@ -159,6 +159,7 @@ int so_load(const char *filename, void **base_addr) {
 	text_size = prog_hdr[text_segno].p_memsz;
 	text_virtbase = (void *)(prog_hdr[text_segno].p_vaddr + (Elf64_Addr)load_virtbase);
 	text_base = (void *)(prog_hdr[text_segno].p_vaddr + (Elf64_Addr)load_base);
+	text_base = (void *)ALIGN_MEM((uintptr_t)text_base, prog_hdr[text_segno].p_align);
 	prog_hdr[text_segno].p_vaddr = (Elf64_Addr)text_virtbase;
 	memcpy(text_base, (void *)((uintptr_t)so_base + prog_hdr[text_segno].p_offset), prog_hdr[text_segno].p_filesz);
 
@@ -166,6 +167,7 @@ int so_load(const char *filename, void **base_addr) {
 	data_size = prog_hdr[data_segno].p_memsz;
 	data_virtbase = (void *)(prog_hdr[data_segno].p_vaddr + (Elf64_Addr)load_virtbase);
 	data_base = (void *)(prog_hdr[data_segno].p_vaddr + (Elf64_Addr)load_base);
+	data_base = (void *)ALIGN_MEM((uintptr_t)data_base, prog_hdr[data_segno].p_align);
 	prog_hdr[data_segno].p_vaddr = (Elf64_Addr)data_virtbase;
 	memcpy(data_base, (void *)((uintptr_t)so_base + prog_hdr[data_segno].p_offset), prog_hdr[data_segno].p_filesz);
 
