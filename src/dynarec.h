@@ -16,6 +16,7 @@ public:
 	std::uint64_t ticks_left = 0;
 	std::uint8_t *memory = nullptr;
 	std::uint64_t mem_size = 0;
+	Dynarmic::A64::Jit *parent = nullptr;
 
 	std::uint64_t getCyclesForInstruction(bool isThumb, std::uint32_t instruction) {
 		(void)isThumb;
@@ -120,5 +121,7 @@ public:
 
 extern so_env so_dynarec_env;
 extern Dynarmic::A64::Jit *so_dynarec;
+extern Dynarmic::ExclusiveMonitor *so_monitor;
+extern uint8_t so_stack[1024 * 1024 * 8];
 
 #endif

@@ -79,9 +79,14 @@ int main(int argc, char** argv) {
 
 void setupDynarec() {
 	Dynarmic::A64::UserConfig user_config;
+	user_config.fastmem_pointer = (uintptr_t)nullptr;
+	user_config.enable_cycle_counting = false;
+	user_config.global_monitor = so_monitor;
 	user_config.callbacks = &so_dynarec_env;
 	so_dynarec = new Dynarmic::A64::Jit(user_config);
 	printf("AARCH64 dynarec inited with address: 0x%x\n", so_dynarec);
+	so_dynarec->SetSP((uintptr_t)&so_stack[sizeof(so_stack)]);
+	so_dynarec_env.parent = so_dynarec;
 }
 
 int main() {
