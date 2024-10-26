@@ -200,7 +200,7 @@ uintptr_t get_trampoline(const char *name, dynarec_import *funcs, int num_funcs)
 {
 	for (int k = 0; k < num_funcs; k++) {
 		if (strcmp(name, funcs[k].symbol) == 0) {
-			if (funcs[k].ptr == NULL)
+			if (funcs[k].ptr == (uintptr_t)NULL)
 				return (uintptr_t)funcs[k].trampoline;
 			else
 				return (uintptr_t)funcs[k].symbol;
@@ -396,7 +396,7 @@ void so_env::CallSVC(std::uint32_t swi)
 	case 1:
 		// Yield from guest for a moment to handle host code requested,
 		// leaving this instance available for nested callbacks and whatnot
-		printf("Halting for host function execution: %p\n", parent->GetRegister(16));
+		//printf("Halting for host function execution: %p\n", parent->GetRegister(16));
 		parent->HaltExecution(Dynarmic::HaltReason::UserDefined2);
 		break;
 	case 2:

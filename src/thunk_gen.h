@@ -78,7 +78,7 @@ struct ThunkImpl {
 				jit->SetVector(0, Dynarmic::A64::Vector{alias[0], alias[1]});
 			}
 			else {
-				jit->SetRegister(0, ret);
+				jit->SetRegister(0, (uint64_t)ret);
 			}
 		}
 		
@@ -148,7 +148,7 @@ dynarec_import gen_wrapper(const char *symname)
 
 	// Setup the trampoline
 	return (dynarec_import) {
-		.symbol = symname,
+		.symbol = (char *)symname,
 		.ptr = 0,
 		//   The trampoline works by loading the address of our wrapper into x17
 		// and then calling a SVC Handler that takes care of gathering the

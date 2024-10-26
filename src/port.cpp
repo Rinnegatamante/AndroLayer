@@ -12,8 +12,6 @@
 #include "thunk_gen.h"
 #include "port.h"
 
-uint64_t ret0_instr = 0x00008052C0035FD6;
-
 /*
  * Custom imports implementations
  */
@@ -58,14 +56,23 @@ int pthread_create_fake (Dynarmic::A64::Jit *jit, pthread_t *__restrict __newthr
 	return 0;
 }
 
+int ret0() {
+	return 0;
+}
+
 /*
  * List of imports to be resolved with native variants
  */
 #define WRAP_FUNC(name, func) gen_wrapper<&func>(name)
 dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("__cxa_atexit", __cxa_atexit_fake),
-	WRAP_FUNC("btowc", btowc),
-	WRAP_FUNC("getenv", getenv),
+	WRAP_FUNC("AAssetManager_open", ret0),
+	WRAP_FUNC("AAssetManager_fromJava", ret0),
+	WRAP_FUNC("AAsset_close", ret0),
+	WRAP_FUNC("AAsset_getLength", ret0),
+	WRAP_FUNC("AAsset_getRemainingLength", ret0),
+	WRAP_FUNC("AAsset_read", ret0),
+	WRAP_FUNC("AAsset_seek", ret0),
 #ifdef __MINGW64__
 	WRAP_FUNC("gettimeofday", mingw_gettimeofday),
 #else
@@ -76,6 +83,13 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("memset", memset),
 	WRAP_FUNC("pthread_once", pthread_once_fake),
 	WRAP_FUNC("pthread_create", pthread_create_fake),
+	WRAP_FUNC("pthread_getspecific", ret0),
+	WRAP_FUNC("pthread_join", pthread_join),
+	WRAP_FUNC("pthread_key_create", ret0),
+	WRAP_FUNC("pthread_key_delete", ret0),
+	WRAP_FUNC("pthread_self", pthread_self),
+	WRAP_FUNC("pthread_setschedparam", ret0),
+	WRAP_FUNC("pthread_setspecific", ret0),
 	WRAP_FUNC("srand", srand),
 	WRAP_FUNC("strcasecmp", strcasecmp),
 	WRAP_FUNC("strcmp", strcmp),
@@ -111,7 +125,7 @@ int exec_booting_sequence(void *dynarec_base_addr) {
 	printf("NVEventAppMain: 0x%llx\n", (uint64_t)NVEventAppMain);
 	
 	
-	so_dynarec->SetPC(initGraphics);
+	so_dynarec->SetPC((uint64_t)initGraphics);
 	so_dynarec->Run();
 	
 	return 0;
