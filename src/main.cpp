@@ -78,12 +78,11 @@ int main(int argc, char** argv) {
 }*/
 
 void setupDynarec() {
-	Dynarmic::A64::UserConfig user_config;
-	user_config.fastmem_pointer = (uintptr_t)nullptr;
-	user_config.enable_cycle_counting = false;
-	user_config.global_monitor = so_monitor;
-	user_config.callbacks = &so_dynarec_env;
-	so_dynarec = new Dynarmic::A64::Jit(user_config);
+	so_dynarec_cfg.fastmem_pointer = (uintptr_t)nullptr;
+	so_dynarec_cfg.enable_cycle_counting = false;
+	so_dynarec_cfg.global_monitor = so_monitor;
+	so_dynarec_cfg.callbacks = &so_dynarec_env;
+	so_dynarec = new Dynarmic::A64::Jit(so_dynarec_cfg);
 	printf("AARCH64 dynarec inited with address: 0x%x\n", so_dynarec);
 	so_dynarec->SetSP((uintptr_t)&so_stack[sizeof(so_stack)]);
 	so_dynarec_env.parent = so_dynarec;
@@ -97,6 +96,10 @@ int main() {
 		return -1;
 	}
 	
+	// Setup dynarec
+	printf("Setting up dynarec...\n");
+	setupDynarec();
+	
 	// Load main game elf
 	printf("Loading %s...\n", MAIN_ELF_PATH);
 	int ret = so_load(MAIN_ELF_PATH, &dynarec_base_addr);
@@ -106,16 +109,8 @@ int main() {
 	}
 	
 	// Relocate jumps and function calls to our dynarec virtual addresses
-	printf("Executing relocations...\n");
-	so_relocate();
-	
-	// Resolve imports with native implementations
-	printf("Resolving imports...\n");
-	so_resolve(dynarec_imports, dynarec_imports_num, 1);
-	
-	// Setup dynarec
-	printf("Setting up dynarec...\n");
-	setupDynarec();
+	printf("Executing relocations and imports resolving...\n");
+	so_relocate(dynarec_imports, dynarec_imports_num);
 	
 	// Flush dynarec cache
 	printf("Flushing dynarec code cache...\n");
@@ -123,7 +118,7 @@ int main() {
 	
 	// Init static arrays
 	printf("Initing static arrays...\n");
-	//so_execute_init_array();
+	so_execute_init_array();
 	
 	// Start dynarec
 	printf("Starting dynarec...\n");

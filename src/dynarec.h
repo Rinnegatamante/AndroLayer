@@ -11,12 +11,15 @@
 
 #define DYNAREC_MEMBLK_SIZE (32 * 1024 * 1024)
 
+#define REG_RA (30) // Return Address register
+
 class so_env final : public Dynarmic::A64::UserCallbacks {
 public:
 	std::uint64_t ticks_left = 0;
 	std::uint8_t *memory = nullptr;
 	std::uint64_t mem_size = 0;
 	Dynarmic::A64::Jit *parent = nullptr;
+	std::optional<std::uint32_t> MemoryReadCode(std::uint64_t vaddr);
 
 	std::uint64_t getCyclesForInstruction(bool isThumb, std::uint32_t instruction) {
 		(void)isThumb;
@@ -24,7 +27,7 @@ public:
 
 		return 1;
 	}
-
+	
 	std::uint8_t MemoryRead8(std::uint64_t vaddr) override {
 		return memory[vaddr];
 	}
@@ -94,9 +97,7 @@ public:
 		printf("Interpreter fallback: 0x%llx\n", pc);
 	}
 
-	void CallSVC(std::uint32_t swi) override {
-		printf("CallSVC 0x%x\n", swi);
-	}
+	void CallSVC(std::uint32_t swi) override;
 
 	void ExceptionRaised(std::uint64_t pc, Dynarmic::A64::Exception exception) override {
 		printf("Exception raised: 0x%llx\n", pc);
@@ -121,6 +122,7 @@ public:
 
 extern so_env so_dynarec_env;
 extern Dynarmic::A64::Jit *so_dynarec;
+extern Dynarmic::A64::UserConfig so_dynarec_cfg;
 extern Dynarmic::ExclusiveMonitor *so_monitor;
 extern uint8_t so_stack[1024 * 1024 * 8];
 
