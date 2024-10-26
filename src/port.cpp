@@ -1,3 +1,4 @@
+#define __USE_GNU
 #include "glad/glad.h"
 #include <GLFW/glfw3.h>
 
@@ -8,7 +9,10 @@
 
 #include "dynarec.h"
 #include "so_util.h"
+#include "thunk_gen.h"
 #include "port.h"
+
+uint64_t ret0_instr = 0x00008052C0035FD6;
 
 /*
  * Custom imports implementations
@@ -26,12 +30,60 @@ int __android_log_print(int prio, const char *tag, const char *fmt, ...) {
 	return 0;
 }
 
+int __cxa_atexit_fake(void (*func) (void *), void *arg, void *dso_handle)
+{
+	return 0;
+}
+
+thread_local void (*_tls__init_func)(void) = nullptr;
+thread_local Dynarmic::A64::Jit *_tls__init_func_jit = nullptr;
+int pthread_once_fake (Dynarmic::A64::Jit *jit, pthread_once_t *__once_control, void (*__init_routine) (void))
+{
+	// Store the current pthread_once elements
+	_tls__init_func = __init_routine;
+	_tls__init_func_jit = jit;
+	// call pthread_once with a custom routine to callback the jit
+	return pthread_once(__once_control, []() {
+		uintptr_t entry_point = (uintptr_t)_tls__init_func;
+		Dynarmic::A64::Jit *jit = _tls__init_func_jit;
+		so_run_fiber(jit, entry_point);
+	});
+}
+int pthread_create_fake (Dynarmic::A64::Jit *jit, pthread_t *__restrict __newthread,
+			   const pthread_attr_t *__restrict __attr,
+			   void *(*__start_routine) (void *),
+			   void *__restrict __arg)
+{
+	std::abort();
+	return 0;
+}
+
 /*
  * List of imports to be resolved with native variants
  */
+#define WRAP_FUNC(name, func) gen_wrapper<&func>(name)
 dynarec_import dynarec_imports[] = {
-	{"__android_log_print", __android_log_print},
-	{"glDeleteShader", glDeleteShader}
+	WRAP_FUNC("__cxa_atexit", __cxa_atexit_fake),
+	WRAP_FUNC("btowc", btowc),
+	WRAP_FUNC("getenv", getenv),
+#ifdef __MINGW64__
+	WRAP_FUNC("gettimeofday", mingw_gettimeofday),
+#else
+	WRAP_FUNC("gettimeofday", gettimeofday),
+#endif
+	WRAP_FUNC("malloc", malloc),
+	WRAP_FUNC("memcpy", memcpy),
+	WRAP_FUNC("memset", memset),
+	WRAP_FUNC("pthread_once", pthread_once_fake),
+	WRAP_FUNC("pthread_create", pthread_create_fake),
+	WRAP_FUNC("srand", srand),
+	WRAP_FUNC("strcasecmp", strcasecmp),
+	WRAP_FUNC("strcmp", strcmp),
+	WRAP_FUNC("strcpy", strcpy),
+	WRAP_FUNC("strlen", strlen),
+	WRAP_FUNC("strncmp", strncmp),
+	WRAP_FUNC("wctob", wctob),
+	WRAP_FUNC("wctype", wctype),
 };
 size_t dynarec_imports_num = sizeof(dynarec_imports) / sizeof(*dynarec_imports);
 
@@ -60,7 +112,6 @@ int exec_booting_sequence(void *dynarec_base_addr) {
 	
 	
 	so_dynarec->SetPC(initGraphics);
-	so_dynarec_env.ticks_left = 1;
 	so_dynarec->Run();
 	
 	return 0;
