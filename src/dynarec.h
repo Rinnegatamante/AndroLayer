@@ -8,6 +8,7 @@
 
 #include "dynarmic/interface/A64/a64.h"
 #include "dynarmic/interface/A64/config.h"
+#include "dynarmic/interface/exclusive_monitor.h"
 
 #define DYNAREC_MEMBLK_SIZE (32 * 1024 * 1024)
 

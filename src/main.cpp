@@ -78,6 +78,7 @@ int main(int argc, char** argv) {
 }*/
 
 void setupDynarec() {
+	so_monitor = new Dynarmic::ExclusiveMonitor(1);
 	so_dynarec_cfg.fastmem_pointer = (uintptr_t)nullptr;
 	so_dynarec_cfg.enable_cycle_counting = false;
 	so_dynarec_cfg.global_monitor = so_monitor;
