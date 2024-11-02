@@ -8,10 +8,11 @@ LIBS = -lglfw3 -lkernel32 -lopengl32 -lglu32 -lgdi32 \
 OBJS = \
 	port.o \
 	so_util.o \
+	dyn_util.o \
 	main.o \
-	glad/glad.o
+	glad/glad.o \
 
-CXXFLAGS = -O3 -fpermissive -g
+CXXFLAGS = -O3 -fpermissive -g -std=c++20
 
 CXX = g++
 CC = gcc

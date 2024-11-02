@@ -86,7 +86,7 @@ void _glDeleteBuffers(GLsizei n, const GLuint *gl_buffers) {
 }
 
 void _glDeleteFramebuffers(GLsizei n, const GLuint *framebuffers) {
-	glDelteFramebuffers(n, framebuffers);
+	glDeleteFramebuffers(n, framebuffers);
 }
 
 void _glDeleteProgram(GLuint prog) {
