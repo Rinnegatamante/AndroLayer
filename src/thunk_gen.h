@@ -124,16 +124,19 @@ public:
 			((std::cout << ((i++) ? ", " : "(") << as_void_ptr_if_pointer(args)), ...);
 			std::cout << ")";
 		}
+#endif
 		if constexpr (std::is_void_v<ReturnType>) {
+#ifndef NDEBUG
 			std::cout << "\n";
+#endif
 			func(args...);
 		} else {
 			ReturnType ret = func(args...);
+#ifndef NDEBUG
 			std::cout << " => " << ret << "\n";
+#endif
 			return ret;
 		}
-#endif
-		return func(args...);
 	}
 };
 
