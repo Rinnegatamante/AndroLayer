@@ -113,6 +113,10 @@ int main() {
 	printf("Executing relocations and imports resolving...\n");
 	so_relocate(dynarec_imports, dynarec_imports_num);
 	
+	// Execute hook patches
+	printf("Applying hook patches...\n");
+	exec_patch_hooks(dynarec_base_addr);
+	
 	// Flush dynarec cache
 	printf("Flushing dynarec code cache...\n");
 	so_flush_caches();

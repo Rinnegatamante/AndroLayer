@@ -18,6 +18,7 @@ extern dynarec_import dynarec_imports[];
 extern size_t dynarec_imports_num;
 
 extern int exec_booting_sequence(void *dynarec_base_addr);
+extern int exec_patch_hooks(void *dynarec_base_addr);
 extern int exec_main_loop(void *dynarec_base_addr);
 
 #endif

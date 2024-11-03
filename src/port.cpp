@@ -135,6 +135,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("btowc", btowc),
 	WRAP_FUNC("calloc", calloc),
 	WRAP_FUNC("getenv", getenv),
+	WRAP_FUNC("free", free),
 #ifdef __MINGW64__
 	WRAP_FUNC("gettimeofday", mingw_gettimeofday),
 #else
@@ -240,6 +241,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("strcasecmp", strcasecmp),
 	WRAP_FUNC("strcmp", strcmp),
 	WRAP_FUNC("strcpy", strcpy),
+	WRAP_FUNC("strncpy", strncpy),
 	WRAP_FUNC("strlen", strlen),
 	WRAP_FUNC("strncmp", strncmp),
 	WRAP_FUNC("wctob", wctob),
@@ -277,6 +279,8 @@ int exec_booting_sequence(void *dynarec_base_addr) {
 	return 0;
 }
 
+int exec_patch_hooks(void *dynarec_base_addr) {
+}
 int exec_main_loop(void *dynarec_base_addr) {
 	if (!glfwWindowShouldClose(glfw_window)) {
 
