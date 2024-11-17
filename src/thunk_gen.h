@@ -171,3 +171,29 @@ dynarec_import gen_wrapper(const char *symname)
 		}
 	};
 }
+
+template <auto F, class T = Thunk<F, decltype(F)>>
+dynarec_hook gen_trampoline(const char *symname)
+{
+	// Setup the static fields
+	T::func = F;
+	T::symname = symname;
+	uintptr_t f = (uintptr_t)T::bridge;
+	uint32_t *f_hilo = reinterpret_cast<uint32_t*>(&f); /* alias the function ptr */
+
+	// Setup the trampoline
+	return (dynarec_hook) {
+		// The trampoline works by loading the address of our wrapper into X17
+		// and then calling a SVC Handler that takes care of gathering the
+		// arguments from guest and passing them to the host function as needed
+		// injecting the jit context pointer if requested by the wrapped function.
+		.trampoline = {
+			0x10000071, // ADR X17, PTR
+			0xF9400230,	// LDR X16, [X17]
+			0xD4000021,	// SVC 0x2
+			// PTR:
+			f_hilo[0],
+			f_hilo[1],
+		}
+	};
+}

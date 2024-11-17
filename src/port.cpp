@@ -282,6 +282,8 @@ int exec_booting_sequence(void *dynarec_base_addr) {
 }
 
 int exec_patch_hooks(void *dynarec_base_addr) {
+	HOOK_FUNC("__cxa_guard_acquire", __cxa_guard_acquire);
+	HOOK_FUNC("__cxa_guard_release", __cxa_guard_release);
 }
 int exec_main_loop(void *dynarec_base_addr) {
 	if (!glfwWindowShouldClose(glfw_window)) {

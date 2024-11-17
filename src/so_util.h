@@ -19,15 +19,17 @@ typedef struct {
 	uint32_t trampoline[10];
 } dynarec_import;
 
+typedef struct {
+	uint32_t trampoline[10];
+} dynarec_hook;
+
 extern dynarec_import dynarec_imports[];
 extern size_t dynarec_imports_num;
 
 extern void *text_base, *data_base;
 extern size_t text_size, data_size;
 
-void hook_thumb(uintptr_t addr, uintptr_t dst);
-void hook_arm(uintptr_t addr, uintptr_t dst);
-void hook_arm64(uintptr_t addr, uintptr_t dst);
+void hook_arm64(uintptr_t addr, dynarec_hook *dst);
 
 void so_flush_caches(void);
 void so_free_temp(void);
@@ -40,5 +42,11 @@ uintptr_t so_find_rel_addr(const char *symbol);
 dynarec_import *so_find_import(dynarec_import *funcs, int num_funcs, const char *name);
 int so_unload(void);
 void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry);
+
+#define HOOK_FUNC(symname, func) \
+	{ \
+		dynarec_hook hook = gen_trampoline<&func>(symname); \
+		hook_arm64((uintptr_t)dynarec_base_addr + so_find_addr_rx(symname), &hook); \
+	}
 
 #endif

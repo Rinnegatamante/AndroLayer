@@ -43,37 +43,10 @@ static char *dynstrtab;
 void end_program_token() { }
 void unresolved_stub_token() { }
 
-void hook_thumb(uintptr_t addr, uintptr_t dst) {
+void hook_arm64(uintptr_t addr, dynarec_hook *dst) {
 	if (addr == 0)
 		return;
-	addr &= ~1;
-	if (addr & 2) {
-		uint16_t nop = 0xbf00;
-		memcpy((void *)addr, &nop, sizeof(nop));
-		addr += 2;
-	}
-	uint32_t hook[2];
-	hook[0] = 0xf000f8df; // LDR PC, [PC]
-	hook[1] = dst;
-	memcpy((void *)addr, hook, sizeof(hook));
-}
-
-void hook_arm(uintptr_t addr, uintptr_t dst) {
-	if (addr == 0)
-		return;
-	uint32_t hook[2];
-	hook[0] = 0xe51ff004; // LDR PC, [PC, #-0x4]
-	hook[1] = dst;
-	memcpy((void *)addr, hook, sizeof(hook));
-}
-
-void hook_arm64(uintptr_t addr, uintptr_t dst) {
-	if (addr == 0)
-		return;
-	uint32_t *hook = (uint32_t *)addr;
-	hook[0] = 0x58000051u; // LDR X17, #0x8
-	hook[1] = 0xd61f0220u; // BR X17
-	*(uint64_t *)(hook + 2) = dst;
+	memcpy((void *)addr, (void *)dst->trampoline, sizeof(uint32_t) * 10);
 }
 
 void so_flush_caches(void) {
