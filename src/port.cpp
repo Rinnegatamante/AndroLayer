@@ -257,11 +257,11 @@ size_t dynarec_imports_num = sizeof(dynarec_imports) / sizeof(*dynarec_imports);
  * All the game specific code that needs to be executed right after executable is loaded in mem must be put here
  */
 int exec_booting_sequence(void *dynarec_base_addr) {
-	glClearColor(0,1,0,0);
+	glClearColor(0, 1, 0, 0);
 	
-	uint32_t (* initGraphics)(void) = (uint32_t (*)())so_find_addr_rx("_Z12initGraphicsv");
-	uint32_t (* ShowJoystick)(int show) = (uint32_t (*)(int))so_find_addr_rx("_Z12ShowJoystickb");
-	int (* NVEventAppMain)(int argc, char *argv[]) = (int (*)(int, char *[]))so_find_addr_rx("_Z14NVEventAppMainiPPc");
+	uintptr_t initGraphics = (uintptr_t)so_find_addr_rx("_Z12initGraphicsv"); // void -> uint64_t
+	uintptr_t ShowJoystick = (uintptr_t)so_find_addr_rx("_Z12ShowJoystickb"); // int -> uint64_t
+	uintptr_t NVEventAppMain = (uintptr_t)so_find_addr_rx("_Z14NVEventAppMainiPPc"); // int, char *[] -> int
 	
 	printf("----------------------\n");
 	printf("Max Payne Loader:\n");
@@ -275,10 +275,8 @@ int exec_booting_sequence(void *dynarec_base_addr) {
 	printf("initGraphics: 0x%llx\n", (uint64_t)initGraphics);
 	printf("ShowJoystick: 0x%llx\n", (uint64_t)ShowJoystick);
 	printf("NVEventAppMain: 0x%llx\n", (uint64_t)NVEventAppMain);
-	
-	
-	so_dynarec->SetPC((uint64_t)initGraphics);
-	so_dynarec->Run();
+
+	so_run_fiber(so_dynarec, (uintptr_t)dynarec_base_addr + initGraphics);
 	
 	return 0;
 }
