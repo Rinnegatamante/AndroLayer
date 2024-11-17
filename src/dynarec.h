@@ -12,7 +12,8 @@
 
 #define DYNAREC_MEMBLK_SIZE (32 * 1024 * 1024)
 
-#define REG_RA (30) // Return Address register
+#define REG_FP (30) // Frame Pointer register
+#define REG_LR (31) // Loader register
 
 class so_env final : public Dynarmic::A64::UserCallbacks {
 public:

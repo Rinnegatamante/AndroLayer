@@ -40,8 +40,12 @@ struct ThunkImpl {
 			if constexpr (std::is_floating_point_v<T>) {
 				Dynarmic::A64::Vector reg_val = jit->GetVector(idx_reg);
 				return *(T*)&reg_val;
+			} else if constexpr (std::is_pointer_v<T> || std::is_integral_v<T> || std::is_enum_v<T>) {
+				return (T)(jit->GetRegister(idx_reg));
+			} else if constexpr (sizeof(T) <= 16) {
+				return (T)(jit->GetRegister(idx_reg));
 			} else {
-				return (T)jit->GetRegister(idx_reg);
+				return *(T*)jit->GetRegister(idx_reg);
 			}
 		}
 	}
@@ -60,7 +64,7 @@ struct ThunkImpl {
 	__attribute__((noinline)) static void bridge(Dynarmic::A64::Jit *jit)
 	{
 		// Store the return address of the function
-		uintptr_t addr_next = jit->GetRegister(REG_RA);
+		uintptr_t addr_next = jit->GetRegister(REG_FP);
 
 		// Gather arguments from the guest environment and pass them to the wrapped
 		// function.
@@ -153,17 +157,17 @@ dynarec_import gen_wrapper(const char *symname)
 	return (dynarec_import) {
 		.symbol = (char *)symname,
 		.ptr = 0,
-		//   The trampoline works by loading the address of our wrapper into x17
+		// The trampoline works by loading the address of our wrapper into X17
 		// and then calling a SVC Handler that takes care of gathering the
 		// arguments from guest and passing them to the host function as needed
 		// injecting the jit context pointer if requested by the wrapped function.
 		.trampoline = {
-			0x10000071,			/*	  adr x17, ptr   */
-			0xF9400230,			/*	  ldr x16, [x17] */
-			0xD4000021,			/*	  svc 0x2		*/
-								   /* ptr:				*/
-			f_hilo[0],			 /*	 .word hi-ptr	*/
-			f_hilo[1],			 /*	 .word lo-ptr	*/
+			0x10000071, // ADR X17, PTR
+			0xF9400230,	// LDR X16, [X17]
+			0xD4000021,	// SVC 0x2
+			// PTR:
+			f_hilo[0],
+			f_hilo[1],
 		}
 	};
 }

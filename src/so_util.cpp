@@ -258,7 +258,7 @@ int so_relocate(dynarec_import *funcs, int num_funcs) {
 
 void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry)
 {
-	jit->SetRegister(REG_RA, (uintptr_t)end_program_token);
+	jit->SetRegister(REG_FP, (uintptr_t)end_program_token);
 	jit->SetPC(entry);
 	Dynarmic::HaltReason reason = {};
 	while ((reason = jit->Run()) == Dynarmic::HaltReason::UserDefined2) {
