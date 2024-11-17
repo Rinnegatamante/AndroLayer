@@ -147,7 +147,6 @@ int so_load(const char *filename, void **base_addr) {
 	// allocate space for all load segments (align to page size)
 	printf("Allocating dynarec memblock of %llu bytes\n", DYNAREC_MEMBLK_SIZE);
 	load_base = malloc(DYNAREC_MEMBLK_SIZE);
-	*base_addr = load_base;
 	if (!load_base)
 		goto err_free_so;
 	memset(load_base, 0, DYNAREC_MEMBLK_SIZE);
@@ -180,6 +179,8 @@ int so_load(const char *filename, void **base_addr) {
 			dynstrtab = (char *)((uintptr_t)text_base + sec_hdr[i].sh_addr);
 		}
 	}
+	
+	*base_addr = text_base;
 
 	if (syms == NULL || dynstrtab == NULL) {
 		res = -2;
