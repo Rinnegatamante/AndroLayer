@@ -124,6 +124,8 @@ int ret0() {
  */
 #define WRAP_FUNC(name, func) gen_wrapper<&func>(name)
 dynarec_import dynarec_imports[] = {
+	WRAP_FUNC("__google_potentially_blocking_region_begin", ret0),
+	WRAP_FUNC("__google_potentially_blocking_region_end", ret0),
 	WRAP_FUNC("__cxa_atexit", __cxa_atexit_fake),
 	WRAP_FUNC("AAssetManager_open", ret0),
 	WRAP_FUNC("AAssetManager_fromJava", ret0),
@@ -219,6 +221,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("glViewport", _glViewport),
 	WRAP_FUNC("malloc", malloc),
 	WRAP_FUNC("memcpy", memcpy),
+	WRAP_FUNC("memcmp", memcmp),
 	WRAP_FUNC("memset", memset),
 	WRAP_FUNC("pthread_once", pthread_once_fake),
 	WRAP_FUNC("pthread_create", pthread_create_fake),
@@ -244,6 +247,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("strncpy", strncpy),
 	WRAP_FUNC("strlen", strlen),
 	WRAP_FUNC("strncmp", strncmp),
+	WRAP_FUNC("tolower", tolower),
 	WRAP_FUNC("wctob", wctob),
 	WRAP_FUNC("wctype", wctype),
 };
