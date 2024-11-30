@@ -7,6 +7,7 @@ LIBS = -lglfw3 -lkernel32 -lopengl32 -lglu32 -lgdi32 \
 
 OBJS = \
 	port.o \
+	variadics.o \
 	so_util.o \
 	dyn_util.o \
 	main.o \

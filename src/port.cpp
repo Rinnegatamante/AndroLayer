@@ -3,6 +3,7 @@
 #include "dyn_util.h"
 #include <GLFW/glfw3.h>
 
+#include <string>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -12,6 +13,7 @@
 #include "so_util.h"
 #include "thunk_gen.h"
 #include "port.h"
+#include "variadics.h"
 
 /*
  * Custom imports implementations
@@ -24,7 +26,7 @@ int __android_log_print(int prio, const char *tag, const char *fmt, ...) {
 	vsnprintf(string, sizeof(string), fmt, list);
 	va_end(list);
 
-	printf("[LOG] %s: %s\n", tag, string);
+	printf("[%s] %s\n", tag, string);
 
 	return 0;
 }
@@ -119,6 +121,13 @@ int ret0() {
 	return 0;
 }
 
+int __aarch64_vsnprintf(char *target, size_t n, const char *format, __aarch64_va_list *v) {
+	// GCC stores actual va_list struct in va_list[1]...
+	v++;
+	std::string s = parse_va_list(format, v);
+	
+	return snprintf(target, n, "%s", s.c_str());
+}
 /*
  * List of imports to be resolved with native variants
  */
@@ -248,6 +257,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("strlen", strlen),
 	WRAP_FUNC("strncmp", strncmp),
 	WRAP_FUNC("tolower", tolower),
+	WRAP_FUNC("vsnprintf", __aarch64_vsnprintf),
 	WRAP_FUNC("wctob", wctob),
 	WRAP_FUNC("wctype", wctype),
 };
