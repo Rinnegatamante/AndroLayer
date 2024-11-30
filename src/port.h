@@ -10,7 +10,7 @@
 #define WINDOW_HEIGHT 720
 
 // Game elfs path
-#define MAIN_ELF_PATH "libMaxPayne.so"
+#define MAIN_ELF_PATH "gamefiles/libMaxPayne.so"
 
 /* Functions */
 extern GLFWwindow *glfw_window;

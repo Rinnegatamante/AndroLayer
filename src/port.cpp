@@ -15,6 +15,12 @@
 #include "port.h"
 #include "variadics.h"
 
+#define AL_ALEXT_PROTOTYPES
+#include <AL/al.h>
+#include <AL/alc.h>
+#include <AL/alext.h>
+#include <AL/efx.h>
+
 /*
  * Custom imports implementations
  */
@@ -133,8 +139,8 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("AAsset_seek", ret0),
 	WRAP_FUNC("btowc", btowc),
 	WRAP_FUNC("calloc", calloc),
-	WRAP_FUNC("getenv", getenv),
 	WRAP_FUNC("free", free),
+	WRAP_FUNC("getenv", ret0),
 #ifdef __MINGW64__
 	WRAP_FUNC("gettimeofday", mingw_gettimeofday),
 #else
@@ -239,11 +245,13 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("pthread_setspecific", ret0),
 	WRAP_FUNC("srand", srand),
 	WRAP_FUNC("strcasecmp", strcasecmp),
+	WRAP_FUNC("strchr", strchr),
 	WRAP_FUNC("strcmp", strcmp),
 	WRAP_FUNC("strcpy", strcpy),
-	WRAP_FUNC("strncpy", strncpy),
 	WRAP_FUNC("strlen", strlen),
+	WRAP_FUNC("strncpy", strncpy),
 	WRAP_FUNC("strncmp", strncmp),
+	WRAP_FUNC("strstr", strstr),
 	WRAP_FUNC("tolower", tolower),
 	WRAP_FUNC("vsnprintf", __aarch64_vsnprintf),
 	WRAP_FUNC("wctob", wctob),
@@ -273,16 +281,284 @@ int exec_booting_sequence(void *dynarec_base_addr) {
 	printf("initGraphics: 0x%llx\n", (uint64_t)initGraphics);
 	printf("ShowJoystick: 0x%llx\n", (uint64_t)ShowJoystick);
 	printf("NVEventAppMain: 0x%llx\n", (uint64_t)NVEventAppMain);
-
+	
+	printf("Executing initGraphics...\n");
 	so_run_fiber(so_dynarec, (uintptr_t)dynarec_base_addr + initGraphics);
+	
+	printf("Executing ShowJoystick...\n");
+	so_dynarec->SetRegister(0, 0); // Set first arg of ShowJoystick function call to 0
+	so_run_fiber(so_dynarec, (uintptr_t)dynarec_base_addr + ShowJoystick);
+	
+	printf("Executing NVEventAppMain...\n");
+	so_dynarec->SetRegister(0, 0);
+	so_dynarec->SetRegister(1, 0);
+	so_run_fiber(so_dynarec, (uintptr_t)dynarec_base_addr + NVEventAppMain);
 	
 	return 0;
 }
 
+int NVEventEGLInit(void) {
+	printf("Initing GL context\n");
+	return 1;
+}
+
+void NVEventEGLSwapBuffers(void) {
+	printf("Swapping backbuffer\n");
+	glfwSwapBuffers(glfw_window);
+}
+
+void NVEventEGLMakeCurrent(void) {
+}
+
+void NVEventEGLUnmakeCurrent(void) {
+}
+
+int64_t ProcessEvents(void) {
+	int ret = glfwWindowShouldClose(glfw_window) ? 1 : 0;
+	if (!ret) {
+		glfwPollEvents();
+	}
+	return ret;
+}
+
+int64_t AND_DeviceType(void) {
+	// 0x1: phone
+	// 0x2: tegra
+	// Low memory is < 256
+	return (512 << 6) | (3 << 2) | 0x2;
+}
+
+int AND_DeviceLocale(void) {
+	return 0; // Defaulting to English for now
+}
+
+static int *deviceChip;
+static int *deviceForm;
+static int *definedDevice;
+int AND_SystemInitialize(void) {
+	*deviceForm = 1;
+	*deviceChip = 14;
+	*definedDevice = 27;
+	return 0;
+}
+
+char *OS_FileGetArchiveName(int mode) {
+	char *out = malloc(strlen("main.obb") + 1);
+	out[0] = '\0';
+	if (mode == 1) // main.obb
+		strcpy(out, "main.obb");
+	return out;
+}
+
+// Game doesn't properly stop/delete buffers, so we fix it with some hooks
+static ALuint last_stopped_src = 0;
+void alSourceStop_hook(ALuint src) {
+	last_stopped_src = src;
+	alSourceStop(src);
+}
+void alDeleteBuffers_hook(ALsizei n, ALuint *bufs) {
+	if (last_stopped_src) {
+		ALint type = 0;
+		alGetSourcei(last_stopped_src, AL_SOURCE_TYPE, &type);
+		if (type == AL_STREAMING)
+			alSourceUnqueueBuffers(last_stopped_src, n, bufs);
+		else
+			alSourcei(last_stopped_src, AL_BUFFER, 0);
+		last_stopped_src = 0;
+	}
+	alDeleteBuffers(n, bufs);
+}
+
+ALCcontext *alcCreateContext_hook(ALCdevice *dev, const ALCint *unused) {
+	const ALCint attr[] = { ALC_FREQUENCY, 44100, 0 };
+	return alcCreateContext(dev, attr);
+}
+
 int exec_patch_hooks(void *dynarec_base_addr) {
+	strcpy((char *)(dynarec_base_addr + so_find_addr_rx("StorageRootBuffer")), "./gamefiles");
+	*(uint8_t *)(dynarec_base_addr + so_find_addr_rx("IsAndroidPaused")) = 0;
+	*(uint8_t *)(dynarec_base_addr + so_find_addr_rx("UseRGBA8")) = 1; // Game defaults to RGB565 which is lower quality
+	
+	// Vars used in AND_SystemInitialize
+	deviceChip = (int *)(dynarec_base_addr + so_find_addr_rx("deviceChip"));
+	deviceForm = (int *)(dynarec_base_addr + so_find_addr_rx("deviceForm"));
+	definedDevice = (int *)(dynarec_base_addr + so_find_addr_rx("definedDevice"));
+	
 	HOOK_FUNC("__cxa_guard_acquire", __cxa_guard_acquire);
 	HOOK_FUNC("__cxa_guard_release", __cxa_guard_release);
+	HOOK_FUNC("__cxa_throw", __cxa_throw);
+	
+	// Disable movies playback for now
+	HOOK_FUNC("_Z12OS_MoviePlayPKcbbf", ret0);
+	HOOK_FUNC("_Z12OS_MovieStopv", ret0);
+	HOOK_FUNC("_Z20OS_MovieSetSkippableb", ret0);
+	HOOK_FUNC("_Z17OS_MovieTextScalei", ret0);
+	HOOK_FUNC("_Z17OS_MovieIsPlayingPi", ret0);
+	HOOK_FUNC("_Z20OS_MoviePlayinWindowPKciiiibbf", ret0);
+	
+	// We don't use the original apk but extracted files
+	HOOK_FUNC("_Z9NvAPKOpenPKc", ret0);
+	
+	// Disabling some checks we don't need
+	HOOK_FUNC("_Z20OS_ServiceAppCommandPKcS0_", ret0);
+	HOOK_FUNC("_Z23OS_ServiceAppCommandIntPKci", ret0);
+	HOOK_FUNC("_Z25OS_ServiceIsWifiAvailablev", ret0);
+	HOOK_FUNC("_Z28OS_ServiceIsNetworkAvailablev", ret0);
+	HOOK_FUNC("_Z18OS_ServiceOpenLinkPKc", ret0);
+	
+	// Inject OpenGL context
+	HOOK_FUNC("_Z14NVEventEGLInitv", NVEventEGLInit);
+	HOOK_FUNC("NVEventEGLMakeCurrent", NVEventEGLMakeCurrent);
+	HOOK_FUNC("_Z23NVEventEGLUnmakeCurrentv", NVEventEGLUnmakeCurrent);
+	HOOK_FUNC("_Z21NVEventEGLSwapBuffersv", NVEventEGLSwapBuffers);
+	
+	// Disable vibration
+	HOOK_FUNC("_Z12VibratePhonei", ret0);
+	HOOK_FUNC("_Z14Mobile_Vibratei", ret0);
+	
+	HOOK_FUNC("_Z14AND_DeviceTypev", AND_DeviceType);
+	HOOK_FUNC("_Z16AND_DeviceLocalev", AND_DeviceLocale);
+	HOOK_FUNC("_Z20AND_SystemInitializev", AND_SystemInitialize);
+	HOOK_FUNC("_Z21AND_ScreenSetWakeLockb", ret0);
+	HOOK_FUNC("_Z22AND_FileGetArchiveName13OSFileArchive", OS_FileGetArchiveName);
+
+	// Redirect OpenAL to native version
+	HOOK_FUNC("InitializeCriticalSection", ret0);
+	HOOK_FUNC("alAuxiliaryEffectSlotf", alAuxiliaryEffectSlotf);
+	HOOK_FUNC("alAuxiliaryEffectSlotfv", alAuxiliaryEffectSlotfv);
+	HOOK_FUNC("alAuxiliaryEffectSloti", alAuxiliaryEffectSloti);
+	HOOK_FUNC("alAuxiliaryEffectSlotiv", alAuxiliaryEffectSlotiv);
+	HOOK_FUNC("alBuffer3f", alBuffer3f);
+	HOOK_FUNC("alBuffer3i", alBuffer3i);
+	HOOK_FUNC("alBufferData", alBufferData);
+	HOOK_FUNC("alBufferf", alBufferf);
+	HOOK_FUNC("alBufferfv", alBufferfv);
+	HOOK_FUNC("alBufferi", alBufferi);
+	HOOK_FUNC("alBufferiv", alBufferiv);
+	HOOK_FUNC("alDeleteAuxiliaryEffectSlots", alDeleteAuxiliaryEffectSlots);
+	HOOK_FUNC("alDeleteBuffers", alDeleteBuffers_hook);
+	HOOK_FUNC("alDeleteEffects", alDeleteEffects);
+	HOOK_FUNC("alDeleteFilters", alDeleteFilters);
+	HOOK_FUNC("alDeleteSources", alDeleteSources);
+	HOOK_FUNC("alDisable", alDisable);
+	HOOK_FUNC("alDistanceModel", alDistanceModel);
+	HOOK_FUNC("alDopplerFactor", alDopplerFactor);
+	HOOK_FUNC("alDopplerVelocity", alDopplerVelocity);
+	HOOK_FUNC("alEffectf", alEffectf);
+	HOOK_FUNC("alEffectfv", alEffectfv);
+	HOOK_FUNC("alEffecti", alEffecti);
+	HOOK_FUNC("alEffectiv", alEffectiv);
+	HOOK_FUNC("alEnable", alEnable);
+	HOOK_FUNC("alFilterf", alFilterf);
+	HOOK_FUNC("alFilterfv", alFilterfv);
+	HOOK_FUNC("alFilteri", alFilteri);
+	HOOK_FUNC("alFilteriv", alFilteriv);
+	HOOK_FUNC("alGenAuxiliaryEffectSlots", alGenAuxiliaryEffectSlots);
+	HOOK_FUNC("alGenBuffers", alGenBuffers);
+	HOOK_FUNC("alGenEffects", alGenEffects);
+	HOOK_FUNC("alGenFilters", alGenFilters);
+	HOOK_FUNC("alGenSources", alGenSources);
+	HOOK_FUNC("alGetAuxiliaryEffectSlotf", alGetAuxiliaryEffectSlotf);
+	HOOK_FUNC("alGetAuxiliaryEffectSlotfv", alGetAuxiliaryEffectSlotfv);
+	HOOK_FUNC("alGetAuxiliaryEffectSloti", alGetAuxiliaryEffectSloti);
+	HOOK_FUNC("alGetAuxiliaryEffectSlotiv", alGetAuxiliaryEffectSlotiv);
+	HOOK_FUNC("alGetBoolean", alGetBoolean);
+	HOOK_FUNC("alGetBooleanv", alGetBooleanv);
+	HOOK_FUNC("alGetBuffer3f", alGetBuffer3f);
+	HOOK_FUNC("alGetBuffer3i", alGetBuffer3i);
+	HOOK_FUNC("alGetBufferf", alGetBufferf);
+	HOOK_FUNC("alGetBufferfv", alGetBufferfv);
+	HOOK_FUNC("alGetBufferi", alGetBufferi);
+	HOOK_FUNC("alGetBufferiv", alGetBufferiv);
+	HOOK_FUNC("alGetDouble", alGetDouble);
+	HOOK_FUNC("alGetDoublev", alGetDoublev);
+	HOOK_FUNC("alGetEffectf", alGetEffectf);
+	HOOK_FUNC("alGetEffectfv", alGetEffectfv);
+	HOOK_FUNC("alGetEffecti", alGetEffecti);
+	HOOK_FUNC("alGetEffectiv", alGetEffectiv);
+	HOOK_FUNC("alGetEnumValue", alGetEnumValue);
+	HOOK_FUNC("alGetError", alGetError);
+	HOOK_FUNC("alGetFilterf", alGetFilterf);
+	HOOK_FUNC("alGetFilterfv", alGetFilterfv);
+	HOOK_FUNC("alGetFilteri", alGetFilteri);
+	HOOK_FUNC("alGetFilteriv", alGetFilteriv);
+	HOOK_FUNC("alGetFloat", alGetFloat);
+	HOOK_FUNC("alGetFloatv", alGetFloatv);
+	HOOK_FUNC("alGetInteger", alGetInteger);
+	HOOK_FUNC("alGetIntegerv", alGetIntegerv);
+	HOOK_FUNC("alGetListener3f", alGetListener3f);
+	HOOK_FUNC("alGetListener3i", alGetListener3i);
+	HOOK_FUNC("alGetListenerf", alGetListenerf);
+	HOOK_FUNC("alGetListenerfv", alGetListenerfv);
+	HOOK_FUNC("alGetListeneri", alGetListeneri);
+	HOOK_FUNC("alGetListeneriv", alGetListeneriv);
+	HOOK_FUNC("alGetProcAddress", alGetProcAddress);
+	HOOK_FUNC("alGetSource3f", alGetSource3f);
+	HOOK_FUNC("alGetSource3i", alGetSource3i);
+	HOOK_FUNC("alGetSourcef", alGetSourcef);
+	HOOK_FUNC("alGetSourcefv", alGetSourcefv);
+	HOOK_FUNC("alGetSourcei", alGetSourcei);
+	HOOK_FUNC("alGetSourceiv", alGetSourceiv);
+	HOOK_FUNC("alGetString", alGetString);
+	HOOK_FUNC("alIsAuxiliaryEffectSlot", alIsAuxiliaryEffectSlot);
+	HOOK_FUNC("alIsBuffer", alIsBuffer);
+	HOOK_FUNC("alIsEffect", alIsEffect);
+	HOOK_FUNC("alIsEnabled", alIsEnabled);
+	HOOK_FUNC("alIsExtensionPresent", alIsExtensionPresent);
+	HOOK_FUNC("alIsFilter", alIsFilter);
+	HOOK_FUNC("alIsSource", alIsSource);
+	HOOK_FUNC("alListener3f", alListener3f);
+	HOOK_FUNC("alListener3i", alListener3i);
+	HOOK_FUNC("alListenerf", alListenerf);
+	HOOK_FUNC("alListenerfv", alListenerfv);
+	HOOK_FUNC("alListeneri", alListeneri);
+	HOOK_FUNC("alListeneriv", alListeneriv);
+	HOOK_FUNC("alSource3f", alSource3f);
+	HOOK_FUNC("alSource3i", alSource3i);
+	HOOK_FUNC("alSourcePause", alSourcePause);
+	HOOK_FUNC("alSourcePausev", alSourcePausev);
+	HOOK_FUNC("alSourcePlay", alSourcePlay);
+	HOOK_FUNC("alSourcePlayv", alSourcePlayv);
+	HOOK_FUNC("alSourceQueueBuffers", alSourceQueueBuffers);
+	HOOK_FUNC("alSourceRewind", alSourceRewind);
+	HOOK_FUNC("alSourceRewindv", alSourceRewindv);
+	HOOK_FUNC("alSourceStop", alSourceStop_hook);
+	HOOK_FUNC("alSourceStopv", alSourceStopv);
+	HOOK_FUNC("alSourceUnqueueBuffers", alSourceUnqueueBuffers);
+	HOOK_FUNC("alSourcef", alSourcef);
+	HOOK_FUNC("alSourcefv", alSourcefv);
+	HOOK_FUNC("alSourcei", alSourcei);
+	HOOK_FUNC("alSourceiv", alSourceiv);
+	HOOK_FUNC("alSpeedOfSound", alSpeedOfSound);
+	HOOK_FUNC("alcCaptureCloseDevice", alcCaptureCloseDevice);
+	HOOK_FUNC("alcCaptureOpenDevice", alcCaptureOpenDevice);
+	HOOK_FUNC("alcCaptureSamples", alcCaptureSamples);
+	HOOK_FUNC("alcCaptureStart", alcCaptureStart);
+	HOOK_FUNC("alcCaptureStop", alcCaptureStop);
+	HOOK_FUNC("alcCloseDevice", alcCloseDevice);
+	HOOK_FUNC("alcCreateContext", alcCreateContext_hook);
+	HOOK_FUNC("alcDestroyContext", alcDestroyContext);
+	HOOK_FUNC("alcGetContextsDevice", alcGetContextsDevice);
+	HOOK_FUNC("alcGetCurrentContext", alcGetCurrentContext);
+	HOOK_FUNC("alcGetEnumValue", alcGetEnumValue);
+	HOOK_FUNC("alcGetError", alcGetError);
+	HOOK_FUNC("alcGetIntegerv", alcGetIntegerv);
+	HOOK_FUNC("alcGetProcAddress", alcGetProcAddress);
+	HOOK_FUNC("alcGetString", alcGetString);
+	HOOK_FUNC("alcGetThreadContext", alcGetThreadContext);
+	HOOK_FUNC("alcIsExtensionPresent", alcIsExtensionPresent);
+	HOOK_FUNC("alcMakeContextCurrent", alcMakeContextCurrent);
+	HOOK_FUNC("alcOpenDevice", alcOpenDevice);
+	HOOK_FUNC("alcProcessContext", alcProcessContext);
+	HOOK_FUNC("alcSetThreadContext", alcSetThreadContext);
+	HOOK_FUNC("alcSuspendContext", alcSuspendContext);
+
+	// Events processing
+	HOOK_FUNC("_Z13ProcessEventsb", ProcessEvents);
+
+	return 0;
 }
+
 int exec_main_loop(void *dynarec_base_addr) {
 	if (!glfwWindowShouldClose(glfw_window)) {
 
