@@ -18,16 +18,10 @@
 /*
  * Custom imports implementations
  */
-int __android_log_print(int prio, const char *tag, const char *fmt, ...) {
-	va_list list;
-	static char string[0x1000];
-
-	va_start(list, fmt);
-	vsnprintf(string, sizeof(string), fmt, list);
-	va_end(list);
-
-	printf("[%s] %s\n", tag, string);
-
+int __android_log_print(int prio, const char *tag, const char *fmt) {
+	std::string s = parse_format(fmt, 3); // startReg is # of fixed function args + 1
+	printf("[%s] %s\n", tag, s.c_str());
+	
 	return 0;
 }
 
@@ -121,18 +115,12 @@ int ret0() {
 	return 0;
 }
 
-int __aarch64_vsnprintf(char *target, size_t n, const char *format, __aarch64_va_list *v) {
-	// GCC stores actual va_list struct in va_list[1]...
-	v++;
-	std::string s = parse_va_list(format, v);
-	
-	return snprintf(target, n, "%s", s.c_str());
-}
 /*
  * List of imports to be resolved with native variants
  */
 #define WRAP_FUNC(name, func) gen_wrapper<&func>(name)
 dynarec_import dynarec_imports[] = {
+	WRAP_FUNC("__android_log_print", __android_log_print),
 	WRAP_FUNC("__google_potentially_blocking_region_begin", ret0),
 	WRAP_FUNC("__google_potentially_blocking_region_end", ret0),
 	WRAP_FUNC("__cxa_atexit", __cxa_atexit_fake),

@@ -2,8 +2,6 @@
 #ifndef _VARIADICS_H_
 #define _VARIADICS_H_
 
-#define MAX_VARIADICS_ARGS (8)
-
 typedef struct 
 { 
 	void *__stack; 
@@ -68,5 +66,9 @@ enum {
 	})
 
 std::string parse_va_list(const char *format, __aarch64_va_list *va);
+std::string parse_format(const char *format, int startReg);
+
+// Re-implementation of most popular libc variadic functions
+int __aarch64_vsnprintf(char *target, size_t n, const char *format, __aarch64_va_list *v);
 
 #endif
