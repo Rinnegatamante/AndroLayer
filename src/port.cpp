@@ -122,6 +122,20 @@ FILE *fopen_fake(char *fname, char *mode) {
 	return fopen(fname, mode);
 }
 
+// qsort uses AARCH64 functions, so we map them to native variants
+int ZIPFile_EntryCompare(const void *key, const void *element) {
+	return strcasecmp(*((const char **)key + 1), *((const char **)element + 1));
+}
+std::unordered_map<uintptr_t, int (*)(const void *, const void *)> qsort_db;
+void qsort_fake(void *base, size_t num, size_t width, int(*compare)(const void *key, const void *element)) {
+	auto native_f = qsort_db.find((uintptr_t)compare);
+	if (native_f == qsort_db.end()) {
+		printf("Fatal error: Invalid qsort function: %llx\n", (uintptr_t)compare - (uintptr_t)dynarec_base_addr);
+		abort();
+	}
+	return qsort(base, num, width, native_f->second);
+}
+
 int ret0() {
 	return 0;
 }
