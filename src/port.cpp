@@ -117,6 +117,11 @@ int pthread_mutex_unlock_fake(pthread_mutex_t** uid) {
 	return pthread_mutex_unlock(*uid);
 }
 
+FILE *fopen_fake(char *fname, char *mode) {
+	printf("fopen(%s, %s)\n", fname, mode);
+	return fopen(fname, mode);
+}
+
 int ret0() {
 	return 0;
 }
@@ -139,7 +144,13 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("AAsset_seek", ret0),
 	WRAP_FUNC("btowc", btowc),
 	WRAP_FUNC("calloc", calloc),
+	WRAP_FUNC("fclose", fclose),
+	WRAP_FUNC("fopen", fopen_fake),
+	WRAP_FUNC("fread", fread),
 	WRAP_FUNC("free", free),
+	WRAP_FUNC("fseek", fseek),
+	WRAP_FUNC("ftell", ftell),
+	WRAP_FUNC("fwrite", fwrite),
 	WRAP_FUNC("getenv", ret0),
 #ifdef __MINGW64__
 	WRAP_FUNC("gettimeofday", mingw_gettimeofday),
@@ -243,6 +254,9 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("pthread_self", pthread_self),
 	WRAP_FUNC("pthread_setschedparam", ret0),
 	WRAP_FUNC("pthread_setspecific", ret0),
+	WRAP_FUNC("qsort", qsort_fake),
+	WRAP_FUNC("snprintf", __aarch64_snprintf),
+	WRAP_FUNC("sprintf", __aarch64_sprintf),
 	WRAP_FUNC("srand", srand),
 	WRAP_FUNC("strcasecmp", strcasecmp),
 	WRAP_FUNC("strchr", strchr),
@@ -297,7 +311,7 @@ int exec_booting_sequence(void *dynarec_base_addr) {
 	return 0;
 }
 
-int NVEventEGLInit(void) {
+uint8_t NVEventEGLInit(void) {
 	printf("Initing GL context\n");
 	return 1;
 }
@@ -343,11 +357,18 @@ int AND_SystemInitialize(void) {
 }
 
 char *OS_FileGetArchiveName(int mode) {
-	char *out = malloc(strlen("main.obb") + 1);
-	out[0] = '\0';
-	if (mode == 1) // main.obb
-		strcpy(out, "main.obb");
-	return out;
+	if (mode == 1) { // main.obb
+		return strdup("main.obb");
+	}
+	return NULL;
+}
+
+int OS_ScreenGetHeight(void) {
+  return WINDOW_HEIGHT;
+}
+
+int OS_ScreenGetWidth(void) {
+  return WINDOW_WIDTH;
 }
 
 // Game doesn't properly stop/delete buffers, so we fix it with some hooks
@@ -376,8 +397,11 @@ ALCcontext *alcCreateContext_hook(ALCdevice *dev, const ALCint *unused) {
 
 int exec_patch_hooks(void *dynarec_base_addr) {
 	strcpy((char *)(dynarec_base_addr + so_find_addr_rx("StorageRootBuffer")), "./gamefiles");
-	*(uint8_t *)(dynarec_base_addr + so_find_addr_rx("IsAndroidPaused")) = 0;
+	*(int *)(dynarec_base_addr + so_find_addr_rx("IsAndroidPaused")) = 0;
 	*(uint8_t *)(dynarec_base_addr + so_find_addr_rx("UseRGBA8")) = 1; // Game defaults to RGB565 which is lower quality
+	
+	// Filling qsort native functions database
+	qsort_db.insert({(uintptr_t)(dynarec_base_addr + so_find_addr_rx("_ZN7ZIPFile12EntryCompareEPKvS1_")), ZIPFile_EntryCompare});
 	
 	// Vars used in AND_SystemInitialize
 	deviceChip = (int *)(dynarec_base_addr + so_find_addr_rx("deviceChip"));
@@ -411,6 +435,10 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	HOOK_FUNC("NVEventEGLMakeCurrent", NVEventEGLMakeCurrent);
 	HOOK_FUNC("_Z23NVEventEGLUnmakeCurrentv", NVEventEGLUnmakeCurrent);
 	HOOK_FUNC("_Z21NVEventEGLSwapBuffersv", NVEventEGLSwapBuffers);
+	
+	// Override screen size
+	HOOK_FUNC("_Z17OS_ScreenGetWidthv", OS_ScreenGetWidth);
+	HOOK_FUNC("_Z18OS_ScreenGetHeightv", OS_ScreenGetHeight);
 	
 	// Disable vibration
 	HOOK_FUNC("_Z12VibratePhonei", ret0);

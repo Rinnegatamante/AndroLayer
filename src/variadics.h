@@ -69,6 +69,8 @@ std::string parse_va_list(const char *format, __aarch64_va_list *va);
 std::string parse_format(const char *format, int startReg);
 
 // Re-implementation of most popular libc variadic functions
+int __aarch64_snprintf(char *buffer, size_t n, const char *format);
+int __aarch64_sprintf(char *buffer, const char *format);
 int __aarch64_vsnprintf(char *target, size_t n, const char *format, __aarch64_va_list *v);
 
 #endif

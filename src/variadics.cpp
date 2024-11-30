@@ -232,3 +232,13 @@ int __aarch64_vsnprintf(char *target, size_t n, const char *format, __aarch64_va
 	
 	return snprintf(target, n, "%s", s.c_str());
 }
+
+int __aarch64_sprintf(char *buffer, const char *format) {
+	std::string s = parse_format(format, 2);
+	return sprintf(buffer, "%s", s.c_str());
+}
+
+int __aarch64_snprintf(char *buffer, size_t n, const char *format) {
+	std::string s = parse_format(format, 3);
+	return snprintf(buffer, n, "%s", s.c_str());
+}
