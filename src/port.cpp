@@ -377,14 +377,6 @@ char *OS_FileGetArchiveName(int mode) {
 	return NULL;
 }
 
-int OS_ScreenGetHeight(void) {
-  return WINDOW_HEIGHT;
-}
-
-int OS_ScreenGetWidth(void) {
-  return WINDOW_WIDTH;
-}
-
 // Game doesn't properly stop/delete buffers, so we fix it with some hooks
 static ALuint last_stopped_src = 0;
 void alSourceStop_hook(ALuint src) {
@@ -428,10 +420,10 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	
 	// Disable movies playback for now
 	HOOK_FUNC("_Z12OS_MoviePlayPKcbbf", ret0);
-	HOOK_FUNC("_Z12OS_MovieStopv", ret0);
-	HOOK_FUNC("_Z20OS_MovieSetSkippableb", ret0);
-	HOOK_FUNC("_Z17OS_MovieTextScalei", ret0);
-	HOOK_FUNC("_Z17OS_MovieIsPlayingPi", ret0);
+	HOOK_FUNC("_Z13AND_StopMoviev", ret0);
+	HOOK_FUNC("_Z20AND_MovieIsSkippableb", ret0);
+	HOOK_FUNC("_Z18AND_MovieTextScalei", ret0);
+	HOOK_FUNC("_Z18AND_IsMoviePlayingv", ret0);
 	HOOK_FUNC("_Z20OS_MoviePlayinWindowPKciiiibbf", ret0);
 	
 	// We don't use the original apk but extracted files
@@ -442,7 +434,7 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	HOOK_FUNC("_Z23OS_ServiceAppCommandIntPKci", ret0);
 	HOOK_FUNC("_Z25OS_ServiceIsWifiAvailablev", ret0);
 	HOOK_FUNC("_Z28OS_ServiceIsNetworkAvailablev", ret0);
-	HOOK_FUNC("_Z18OS_ServiceOpenLinkPKc", ret0);
+	HOOK_FUNC("_Z12AND_OpenLinkPKc", ret0);
 	
 	// Inject OpenGL context
 	HOOK_FUNC("_Z14NVEventEGLInitv", NVEventEGLInit);
@@ -451,8 +443,7 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	HOOK_FUNC("_Z21NVEventEGLSwapBuffersv", NVEventEGLSwapBuffers);
 	
 	// Override screen size
-	HOOK_FUNC("_Z17OS_ScreenGetWidthv", OS_ScreenGetWidth);
-	HOOK_FUNC("_Z18OS_ScreenGetHeightv", OS_ScreenGetHeight);
+	*(int64_t *)(dynarec_base_addr + so_find_addr_rx("windowSize")) = ((int64_t)WINDOW_HEIGHT << 32) | (int64_t)WINDOW_WIDTH;
 	
 	// Disable vibration
 	HOOK_FUNC("_Z12VibratePhonei", ret0);
