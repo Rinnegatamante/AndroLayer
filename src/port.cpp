@@ -341,7 +341,7 @@ void NVEventEGLMakeCurrent(void) {
 void NVEventEGLUnmakeCurrent(void) {
 }
 
-int64_t ProcessEvents(void) {
+int ProcessEvents(void) {
 	int ret = glfwWindowShouldClose(glfw_window) ? 1 : 0;
 	if (!ret) {
 		glfwPollEvents();
@@ -349,7 +349,7 @@ int64_t ProcessEvents(void) {
 	return ret;
 }
 
-int64_t AND_DeviceType(void) {
+int AND_DeviceType(void) {
 	// 0x1: phone
 	// 0x2: tegra
 	// Low memory is < 256
@@ -370,7 +370,7 @@ int AND_SystemInitialize(void) {
 	return 0;
 }
 
-char *OS_FileGetArchiveName(int mode) {
+char *OS_FileGetArchiveName(unsigned int mode) {
 	if (mode == 1) { // main.obb
 		return strdup("main.obb");
 	}
@@ -401,6 +401,57 @@ ALCcontext *alcCreateContext_hook(ALCdevice *dev, const ALCint *unused) {
 	return alcCreateContext(dev, attr);
 }
 
+int WarGamepad_GetGamepadType(int padnum) {
+	// Fake to a regular controller
+	return 0;
+}
+
+int WarGamepad_GetGamepadButtons(int padnum) {
+	int mask = 0;
+	int count;
+	const unsigned char *buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &count);
+
+	if (buttons[GLFW_GAMEPAD_BUTTON_A] == GLFW_PRESS)
+		mask |= 0x1;
+	if (buttons[GLFW_GAMEPAD_BUTTON_B] == GLFW_PRESS)
+		mask |= 0x2;
+	if (buttons[GLFW_GAMEPAD_BUTTON_X] == GLFW_PRESS)
+		mask |= 0x4;
+	if (buttons[GLFW_GAMEPAD_BUTTON_Y] == GLFW_PRESS)
+		mask |= 0x8;
+	if (buttons[GLFW_GAMEPAD_BUTTON_START] == GLFW_PRESS)
+		mask |= 0x10;
+	if (buttons[GLFW_GAMEPAD_BUTTON_GUIDE] == GLFW_PRESS)
+		mask |= 0x20;
+	if (buttons[GLFW_GAMEPAD_BUTTON_LEFT_BUMPER] == GLFW_PRESS)
+		mask |= 0x40;
+	if (buttons[GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER] == GLFW_PRESS)
+		mask |= 0x80;
+	if (buttons[GLFW_GAMEPAD_BUTTON_DPAD_UP] == GLFW_PRESS)
+		mask |= 0x100;
+	if (buttons[GLFW_GAMEPAD_BUTTON_DPAD_DOWN] == GLFW_PRESS)
+		mask |= 0x200;
+	if (buttons[GLFW_GAMEPAD_BUTTON_DPAD_LEFT] == GLFW_PRESS)
+		mask |= 0x400;
+	if (buttons[GLFW_GAMEPAD_BUTTON_DPAD_RIGHT] == GLFW_PRESS)
+		mask |= 0x800;
+	if (buttons[GLFW_GAMEPAD_BUTTON_LEFT_THUMB] == GLFW_PRESS)
+		mask |= 0x1000;
+	if (buttons[GLFW_GAMEPAD_BUTTON_RIGHT_THUMB] == GLFW_PRESS)
+		mask |= 0x2000;
+
+	return mask;
+}
+
+float WarGamepad_GetGamepadAxis(int padnum, int axis) {
+	int count;
+	const float *axes = glfwGetJoystickAxes(GLFW_JOYSTICK_1, &count); 	
+
+	if (fabsf(axes[axis]) > 0.2f)
+		return axes[axis];
+
+	return 0.0f;
+}
 int exec_patch_hooks(void *dynarec_base_addr) {
 	strcpy((char *)(dynarec_base_addr + so_find_addr_rx("StorageRootBuffer")), "./gamefiles");
 	*(int *)(dynarec_base_addr + so_find_addr_rx("IsAndroidPaused")) = 0;
@@ -414,6 +465,10 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	deviceForm = (int *)(dynarec_base_addr + so_find_addr_rx("deviceForm"));
 	definedDevice = (int *)(dynarec_base_addr + so_find_addr_rx("definedDevice"));
 	
+	// Redirect gamepad code to our own implementation
+	HOOK_FUNC("_Z25WarGamepad_GetGamepadTypei", WarGamepad_GetGamepadType);
+	HOOK_FUNC("_Z28WarGamepad_GetGamepadButtonsi", WarGamepad_GetGamepadButtons);
+	HOOK_FUNC("_Z25WarGamepad_GetGamepadAxisii", WarGamepad_GetGamepadAxis);
 	HOOK_FUNC("__cxa_guard_acquire", __cxa_guard_acquire);
 	HOOK_FUNC("__cxa_guard_release", __cxa_guard_release);
 	HOOK_FUNC("__cxa_throw", __cxa_throw);
@@ -438,7 +493,7 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	
 	// Inject OpenGL context
 	HOOK_FUNC("_Z14NVEventEGLInitv", NVEventEGLInit);
-	HOOK_FUNC("NVEventEGLMakeCurrent", NVEventEGLMakeCurrent);
+	HOOK_FUNC("_Z21NVEventEGLMakeCurrentv", NVEventEGLMakeCurrent);
 	HOOK_FUNC("_Z23NVEventEGLUnmakeCurrentv", NVEventEGLUnmakeCurrent);
 	HOOK_FUNC("_Z21NVEventEGLSwapBuffersv", NVEventEGLSwapBuffers);
 	
