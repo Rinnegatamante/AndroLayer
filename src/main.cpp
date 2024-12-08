@@ -77,12 +77,17 @@ int main(int argc, char** argv) {
 	return 0;
 }*/
 
+static uint64_t tpidr_el0[0x40];
+
 void setupDynarec() {
+	memset(tpidr_el0, 0, sizeof(uint64_t) * 0x40);
 	so_monitor = new Dynarmic::ExclusiveMonitor(1);
 	so_dynarec_cfg.fastmem_pointer = (uintptr_t)nullptr;
 	so_dynarec_cfg.enable_cycle_counting = false;
 	so_dynarec_cfg.global_monitor = so_monitor;
 	so_dynarec_cfg.callbacks = &so_dynarec_env;
+	so_dynarec_cfg.tpidrro_el0 = (uint64_t *)tpidr_el0;
+	so_dynarec_cfg.tpidr_el0 = (uint64_t *)tpidr_el0;
 	so_dynarec = new Dynarmic::A64::Jit(so_dynarec_cfg);
 	printf("AARCH64 dynarec inited with address: 0x%x\n", so_dynarec);
 	so_dynarec->SetSP((uintptr_t)&so_stack[sizeof(so_stack)]);
