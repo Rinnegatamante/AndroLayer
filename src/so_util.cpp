@@ -180,6 +180,8 @@ uintptr_t get_trampoline(const char *name, dynarec_import *funcs, int num_funcs)
 				return (uintptr_t)funcs[k].symbol;
 		}
 	}
+	
+	printf("Unresolved import: %s\n", name);
 	return (uintptr_t)unresolved_stub_token;
 }
 
