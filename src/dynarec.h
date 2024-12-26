@@ -40,40 +40,40 @@ public:
 	
 	std::uint8_t MemoryRead8(std::uint64_t vaddr) override {
 #ifdef TPIDR_EL0_HACK
-		if (memory + vaddr < 0x1000)
-			vaddr += tpidr_el0;
+		if ((uintptr_t)memory + vaddr < 0x1000)
+			vaddr += (uintptr_t)tpidr_el0;
 #endif
 		return memory[vaddr];
 	}
 
 	std::uint16_t MemoryRead16(std::uint64_t vaddr) override {
 #ifdef TPIDR_EL0_HACK
-		if (memory + vaddr < 0x1000)
-			vaddr += tpidr_el0;
+		if ((uintptr_t)memory + vaddr < 0x1000)
+			vaddr += (uintptr_t)tpidr_el0;
 #endif
 		return *(std::uint16_t *)(memory + vaddr);
 	}
 
 	std::uint32_t MemoryRead32(std::uint64_t vaddr) override {
 #ifdef TPIDR_EL0_HACK
-		if (memory + vaddr < 0x1000)
-			vaddr += tpidr_el0;
+		if ((uintptr_t)memory + vaddr < 0x1000)
+			vaddr += (uintptr_t)tpidr_el0;
 #endif
 		return *(std::uint32_t *)(memory + vaddr);
 	}
 
 	std::uint64_t MemoryRead64(std::uint64_t vaddr) override {
 #ifdef TPIDR_EL0_HACK
-		if (memory + vaddr < 0x1000)
-			vaddr += tpidr_el0;
+		if ((uintptr_t)memory + vaddr < 0x1000)
+			vaddr += (uintptr_t)tpidr_el0;
 #endif
 		return *(std::uint64_t *)(memory + vaddr);
 	}
 	
 	Dynarmic::A64::Vector MemoryRead128(std::uint64_t vaddr) override {
 #ifdef TPIDR_EL0_HACK
-		if (memory + vaddr < 0x1000)
-			vaddr += tpidr_el0;
+		if ((uintptr_t)memory + vaddr < 0x1000)
+			vaddr += (uintptr_t)tpidr_el0;
 #endif
 		Dynarmic::A64::Vector data;
 		data[0] = *(std::uint16_t *)(memory + vaddr);
