@@ -37,7 +37,7 @@ enum {
 				int offs = va->__vr_offs; \
 				va->__vr_offs += nreg * 16; \
 				if (va->__vr_offs < 0) { \
-					r = *(type *)(va->__vr_top + offs); \
+					r = *(type *)((uintptr_t)va->__vr_top + offs); \
 					printf("arg is on VR on %llx + %d\n", va->__vr_top, offs); \
 					done = 1; \
 				} \
@@ -48,7 +48,7 @@ enum {
 				int offs = va->__gr_offs; \
 				va->__gr_offs += nreg * 8; \
 				if (va->__gr_offs < 0) { \
-					r = *(type *)(va->__gr_top + offs); \
+					r = *(type *)((uintptr_t)va->__gr_top + offs); \
 					printf("arg is on GR on %llx + %d\n", va->__gr_top, offs); \
 					done = 1; \
 				} \
@@ -75,5 +75,6 @@ int __aarch64_snprintf(char *buffer, size_t n, const char *format);
 int __aarch64_sprintf(char *buffer, const char *format);
 int __aarch64_sscanf(const char *buffer, const char *format);
 int __aarch64_vsnprintf(char *target, size_t n, const char *format, __aarch64_va_list *v);
+int __aarch64_vsprintf(char *target, const char *format, __aarch64_va_list *v);
 
 #endif

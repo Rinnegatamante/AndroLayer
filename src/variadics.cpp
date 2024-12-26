@@ -233,6 +233,14 @@ int __aarch64_vsnprintf(char *target, size_t n, const char *format, __aarch64_va
 	return snprintf(target, n, "%s", s.c_str());
 }
 
+int __aarch64_vsprintf(char *target, const char *format, __aarch64_va_list *v) {
+	// GCC stores actual va_list struct in va_list[1]...
+	v++;
+	std::string s = parse_va_list(format, v);
+	
+	return sprintf(target, "%s", s.c_str());	
+}
+
 int __aarch64_sprintf(char *buffer, const char *format) {
 	std::string s = parse_format(format, 2);
 	return sprintf(buffer, "%s", s.c_str());

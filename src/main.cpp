@@ -77,7 +77,7 @@ int main(int argc, char** argv) {
 	return 0;
 }*/
 
-static uint64_t tpidr_el0[0x40];
+uint64_t tpidr_el0[0x40];
 
 void setupDynarec() {
 	memset(tpidr_el0, 0, sizeof(uint64_t) * 0x40);
