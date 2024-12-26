@@ -26,6 +26,19 @@ std::string parse_format(const char *format, int startReg) {
 			s++;
 PROCESS_VAR:
 			switch (*s) {
+			case '0':
+			case '1':
+			case '2':
+			case '3':
+			case '4':
+			case '5':
+			case '6':
+			case '7':
+			case '8':
+			case '9':
+				s++;
+				goto PROCESS_VAR;
+				break;
 			case 'h':
 				var_size--;
 				s++;
@@ -40,6 +53,7 @@ PROCESS_VAR:
 				var_type = VAR_FLOAT;
 				break;
 			case 'd':
+			case 'i':
 				var_type = VAR_SIGNED_INTEGER;
 				break;
 			case 'u':
