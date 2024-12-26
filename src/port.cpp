@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdarg.h>
+#include <math.h>
 
 #include "dynarec.h"
 #include "so_util.h"
@@ -271,6 +272,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("qsort", qsort_fake),
 	WRAP_FUNC("snprintf", __aarch64_snprintf),
 	WRAP_FUNC("sprintf", __aarch64_sprintf),
+	WRAP_FUNC("sqrtf", sqrtf),
 	WRAP_FUNC("srand", srand),
 	WRAP_FUNC("strcasecmp", strcasecmp),
 	WRAP_FUNC("strchr", strchr),
@@ -401,6 +403,13 @@ ALCcontext *alcCreateContext_hook(ALCdevice *dev, const ALCint *unused) {
 	return alcCreateContext(dev, attr);
 }
 
+int NVThreadGetCurrentJNIEnv() {
+	uintptr_t addr_next = so_dynarec->GetRegister(REG_FP);
+	printf("GetCurrentJNIENv called from %x\n", (uintptr_t)addr_next - (uintptr_t)dynarec_base_addr);
+
+	return 0x1337;
+}
+
 int WarGamepad_GetGamepadType(int padnum) {
 	// Fake to a regular controller
 	return 0;
@@ -452,6 +461,15 @@ float WarGamepad_GetGamepadAxis(int padnum, int axis) {
 
 	return 0.0f;
 }
+
+int GetAndroidCurrentLanguage(void) {
+	printf("GetAndroidCurrentLanguage returning English\n");
+	return 0; // English
+}
+
+void SetAndroidCurrentLanguage(int lang) {
+}
+
 int exec_patch_hooks(void *dynarec_base_addr) {
 	strcpy((char *)(dynarec_base_addr + so_find_addr_rx("StorageRootBuffer")), "./gamefiles");
 	*(int *)(dynarec_base_addr + so_find_addr_rx("IsAndroidPaused")) = 0;
@@ -465,10 +483,17 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	deviceForm = (int *)(dynarec_base_addr + so_find_addr_rx("deviceForm"));
 	definedDevice = (int *)(dynarec_base_addr + so_find_addr_rx("definedDevice"));
 	
+	HOOK_FUNC("_Z24NVThreadGetCurrentJNIEnvv", NVThreadGetCurrentJNIEnv);
+	
+	// Language override
+	HOOK_FUNC("_Z25GetAndroidCurrentLanguagev", GetAndroidCurrentLanguage);
+	HOOK_FUNC("_Z25SetAndroidCurrentLanguagei", SetAndroidCurrentLanguage);
+	
 	// Redirect gamepad code to our own implementation
 	HOOK_FUNC("_Z25WarGamepad_GetGamepadTypei", WarGamepad_GetGamepadType);
 	HOOK_FUNC("_Z28WarGamepad_GetGamepadButtonsi", WarGamepad_GetGamepadButtons);
 	HOOK_FUNC("_Z25WarGamepad_GetGamepadAxisii", WarGamepad_GetGamepadAxis);
+
 	HOOK_FUNC("__cxa_guard_acquire", __cxa_guard_acquire);
 	HOOK_FUNC("__cxa_guard_release", __cxa_guard_release);
 	HOOK_FUNC("__cxa_throw", __cxa_throw);
