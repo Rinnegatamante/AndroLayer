@@ -6,6 +6,8 @@
 #include <tuple>
 #include <iostream>
 
+extern void *dynarec_base_addr;
+
 template<typename D, typename R, typename... Args>
 struct ThunkImpl {
 	using Tuple = std::tuple<Args...>;
