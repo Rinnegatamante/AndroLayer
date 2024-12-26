@@ -106,6 +106,9 @@ int main() {
 	printf("Setting up dynarec...\n");
 	setupDynarec();
 	
+	// Entering game folder
+	chdir("./gamefiles");
+	
 	// Load main game elf
 	printf("Loading %s...\n", MAIN_ELF_PATH);
 	int ret = so_load(MAIN_ELF_PATH, &dynarec_base_addr);

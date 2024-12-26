@@ -29,7 +29,7 @@
  */
 char *stpcpy(char *s1, char *s2) {
 	strcpy(s1, s2);
-	return &s2[strlen(s2)];
+	return &s1[strlen(s1)];
 }
 
 int __android_log_print(int prio, const char *tag, const char *fmt) {
@@ -126,13 +126,17 @@ int pthread_mutex_unlock_fake(pthread_mutex_t** uid) {
 }
 
 FILE *fopen_fake(char *fname, char *mode) {
-	printf("fopen(%s, %s)\n", fname, mode);
-	return fopen(fname, mode);
+	FILE *f = fopen(fname, mode);
+	printf("fopen(%s, %s) -> %llx\n", fname, mode, f);
+	return f;
 }
 
 // qsort uses AARCH64 functions, so we map them to native variants
 int ZIPFile_EntryCompare(const void *key, const void *element) {
 	return strcasecmp(*((const char **)key + 1), *((const char **)element + 1));
+}
+int RASFileNameComp(const void *key, const void *element) {
+	return strcasecmp(*(const char **)key, *(const char **)element);
 }
 std::unordered_map<uintptr_t, int (*)(const void *, const void *)> qsort_db;
 void qsort_fake(void *base, size_t num, size_t width, int(*compare)(const void *key, const void *element)) {
@@ -142,6 +146,17 @@ void qsort_fake(void *base, size_t num, size_t width, int(*compare)(const void *
 		abort();
 	}
 	return qsort(base, num, width, native_f->second);
+}
+
+// bsearch uses AARCH64 functions, so we map them to native variants
+std::unordered_map<uintptr_t, int (*)(const void *, const void *)> bsearch_db;
+void *bsearch_fake(const void *key, const void *base, size_t num, size_t size, int (*compare)(const void *element1, const void *element2)) {
+	auto native_f = bsearch_db.find((uintptr_t)compare);
+	if (native_f == bsearch_db.end()) {
+		printf("Fatal error: Invalid bsearch function: %llx\n", (uintptr_t)compare - (uintptr_t)dynarec_base_addr);
+		abort();
+	}
+	return bsearch(key, base, num, size, native_f->second);
 }
 
 int ret0() {
@@ -159,7 +174,7 @@ typedef struct {
 } aarch64_timezone;
 
 int gettimeofday_hook(aarch64_timeval *tv, aarch64_timezone *tz) {
-	printf("Entering gettimeofday\n");
+	//printf("Entering gettimeofday\n");
 	struct timeval t;
 #ifdef __MINGW64__
 	int ret = mingw_gettimeofday(&t, (struct timezone *)tz);
@@ -168,7 +183,7 @@ int gettimeofday_hook(aarch64_timeval *tv, aarch64_timezone *tz) {
 #endif
 	tv->tv_sec = t.tv_sec;
 	tv->tv_usec = t.tv_usec;
-	printf("Exiting gettimeofday\n");
+	//printf("Exiting gettimeofday\n");
 	return ret;
 }
 
@@ -206,6 +221,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("atanf", atanf),
 	WRAP_FUNC("atof", atof),
 	WRAP_FUNC("atoi", atoi),
+	WRAP_FUNC("bsearch", bsearch_fake),
 	WRAP_FUNC("btowc", btowc),
 	WRAP_FUNC("calloc", calloc),
 	WRAP_FUNC("close", close),
@@ -221,7 +237,11 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("fgets", fgets),
 	WRAP_FUNC("fmod", fmodd),
 	WRAP_FUNC("fmodf", fmodf),
+#if 1 // Debug variant with logging
 	WRAP_FUNC("fopen", fopen_fake),
+#else
+	WRAP_FUNC("fopen", fopen),
+#endif
 	WRAP_FUNC("fprintf", __aarch64_fprintf),
 	WRAP_FUNC("fputc", fputc),
 	WRAP_FUNC("fputs", fputs),
@@ -582,12 +602,21 @@ void SetAndroidCurrentLanguage(int lang) {
 }
 
 int exec_patch_hooks(void *dynarec_base_addr) {
-	strcpy((char *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("StorageRootBuffer")), "./gamefiles");
+	mkdir("./savegames");
+	
+	// FIXME: This should be 6 but, for some reason, it's defaulted to 0 (?)
+	*(int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("numRASFiles")) = 6;
+	
+	strcpy((char *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("StorageRootBuffer")), ".");
 	*(int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("IsAndroidPaused")) = 0;
 	*(uint8_t *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("UseRGBA8")) = 1; // Game defaults to RGB565 which is lower quality
 	
 	// Filling qsort native functions database
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_ZN7ZIPFile12EntryCompareEPKvS1_")), ZIPFile_EntryCompare});
+	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z15RASFileNameCompPKvS0_")), RASFileNameComp});
+	
+	// Filling bsearch native functions database
+	bsearch_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z15RASFileNameCompPKvS0_")), RASFileNameComp});
 	
 	// Vars used in AND_SystemInitialize
 	deviceChip = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("deviceChip"));
