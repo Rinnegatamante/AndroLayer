@@ -15,6 +15,14 @@
 #define REG_FP (30) // Frame Pointer register
 #define REG_LR (31) // Loader register
 
+#define TPIDR_EL0_HACK // Looks like Dynarmic has some issue handling MRS/MSR properly with TPIDR register, this workarounds the issue
+
+extern Dynarmic::A64::Jit *so_dynarec;
+extern Dynarmic::A64::UserConfig so_dynarec_cfg;
+extern Dynarmic::ExclusiveMonitor *so_monitor;
+extern uint8_t so_stack[1024 * 1024 * 8];
+extern uint64_t tpidr_el0[0x40];
+
 class so_env final : public Dynarmic::A64::UserCallbacks {
 public:
 	std::uint64_t ticks_left = 0;
@@ -31,22 +39,42 @@ public:
 	}
 	
 	std::uint8_t MemoryRead8(std::uint64_t vaddr) override {
+#ifdef TPIDR_EL0_HACK
+		if (memory + vaddr < 0x1000)
+			vaddr += tpidr_el0;
+#endif
 		return memory[vaddr];
 	}
 
 	std::uint16_t MemoryRead16(std::uint64_t vaddr) override {
+#ifdef TPIDR_EL0_HACK
+		if (memory + vaddr < 0x1000)
+			vaddr += tpidr_el0;
+#endif
 		return *(std::uint16_t *)(memory + vaddr);
 	}
 
 	std::uint32_t MemoryRead32(std::uint64_t vaddr) override {
+#ifdef TPIDR_EL0_HACK
+		if (memory + vaddr < 0x1000)
+			vaddr += tpidr_el0;
+#endif
 		return *(std::uint32_t *)(memory + vaddr);
 	}
 
 	std::uint64_t MemoryRead64(std::uint64_t vaddr) override {
+#ifdef TPIDR_EL0_HACK
+		if (memory + vaddr < 0x1000)
+			vaddr += tpidr_el0;
+#endif
 		return *(std::uint64_t *)(memory + vaddr);
 	}
 	
 	Dynarmic::A64::Vector MemoryRead128(std::uint64_t vaddr) override {
+#ifdef TPIDR_EL0_HACK
+		if (memory + vaddr < 0x1000)
+			vaddr += tpidr_el0;
+#endif
 		Dynarmic::A64::Vector data;
 		data[0] = *(std::uint16_t *)(memory + vaddr);
 		data[1] = *(std::uint16_t *)(memory + vaddr + 8);
@@ -96,7 +124,7 @@ public:
     }
 
 	void InterpreterFallback(std::uint64_t pc, size_t num_instructions) override {
-		printf("Interpreter fallback: 0x%llx\n", pc);
+		printf("Interpreter fallback: 0x%llx with %u instructions\n", pc, num_instructions);
 	}
 
 	void CallSVC(std::uint32_t swi) override;
@@ -123,9 +151,5 @@ public:
 };
 
 extern so_env so_dynarec_env;
-extern Dynarmic::A64::Jit *so_dynarec;
-extern Dynarmic::A64::UserConfig so_dynarec_cfg;
-extern Dynarmic::ExclusiveMonitor *so_monitor;
-extern uint8_t so_stack[1024 * 1024 * 8];
 
 #endif
