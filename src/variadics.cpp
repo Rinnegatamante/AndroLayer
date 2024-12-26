@@ -242,3 +242,18 @@ int __aarch64_snprintf(char *buffer, size_t n, const char *format) {
 	std::string s = parse_format(format, 3);
 	return snprintf(buffer, n, "%s", s.c_str());
 }
+
+int __aarch64_fprintf(FILE *fp, char *format) {
+	std::string s = parse_format(format, 2);
+	return fprintf(fp, "%s", s.c_str());
+}
+
+int __aarch64_printf(const char *format) {
+	std::string s = parse_format(format, 1);
+	return printf("%s", s.c_str());
+}
+
+int __aarch64_sscanf(const char *buffer, const char *format) {
+	std::string s = parse_format(format, 2);
+	return sscanf(buffer, "%s", s.c_str());
+}

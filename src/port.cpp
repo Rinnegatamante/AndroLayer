@@ -3,6 +3,8 @@
 #include "dyn_util.h"
 #include <GLFW/glfw3.h>
 
+#include <dirent.h>
+#include <string.h>
 #include <string>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +27,11 @@
 /*
  * Custom imports implementations
  */
+char *stpcpy(char *s1, char *s2) {
+	strcpy(s1, s2);
+	return &s2[strlen(s2)];
+}
+
 int __android_log_print(int prio, const char *tag, const char *fmt) {
 	std::string s = parse_format(fmt, 3); // startReg is # of fixed function args + 1
 	printf("[%s] %s\n", tag, s.c_str());
@@ -141,6 +148,30 @@ int ret0() {
 	return 0;
 }
 
+typedef struct {
+	int64_t tv_sec;
+	uint64_t tv_usec;
+} aarch64_timeval;
+
+typedef struct {
+	int tz_minuteswest;
+	int tz_dsttime;
+} aarch64_timezone;
+
+int gettimeofday_hook(aarch64_timeval *tv, aarch64_timezone *tz) {
+	printf("Entering gettimeofday\n");
+	struct timeval t;
+#ifdef __MINGW64__
+	int ret = mingw_gettimeofday(&t, (struct timezone *)tz);
+#else
+	int ret = gettimeofday(&t, (struct timezone *)tz);
+#endif
+	tv->tv_sec = t.tv_sec;
+	tv->tv_usec = t.tv_usec;
+	printf("Exiting gettimeofday\n");
+	return ret;
+}
+
 /*
  * List of imports to be resolved with native variants
  */
@@ -157,21 +188,28 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("AAsset_getRemainingLength", ret0),
 	WRAP_FUNC("AAsset_read", ret0),
 	WRAP_FUNC("AAsset_seek", ret0),
+	WRAP_FUNC("abort", abort),
+	WRAP_FUNC("atan2f", atan2f),
+	WRAP_FUNC("atoi", atoi),
 	WRAP_FUNC("btowc", btowc),
 	WRAP_FUNC("calloc", calloc),
+	WRAP_FUNC("close", close),
+	WRAP_FUNC("closedir", closedir),
+	WRAP_FUNC("cosf", cosf),
 	WRAP_FUNC("fclose", fclose),
+	WRAP_FUNC("feof", feof),
+	WRAP_FUNC("fgetc", fgetc),
+	WRAP_FUNC("fmodf", fmodf),
 	WRAP_FUNC("fopen", fopen_fake),
+	WRAP_FUNC("fprintf", __aarch64_fprintf),
+	WRAP_FUNC("fputc", fputc),
 	WRAP_FUNC("fread", fread),
 	WRAP_FUNC("free", free),
 	WRAP_FUNC("fseek", fseek),
 	WRAP_FUNC("ftell", ftell),
 	WRAP_FUNC("fwrite", fwrite),
 	WRAP_FUNC("getenv", ret0),
-#ifdef __MINGW64__
-	WRAP_FUNC("gettimeofday", mingw_gettimeofday),
-#else
-	WRAP_FUNC("gettimeofday", gettimeofday),
-#endif
+	WRAP_FUNC("gettimeofday", gettimeofday_hook),
 	WRAP_FUNC("glActiveTexture", _glActiveTexture),
 	WRAP_FUNC("glAttachShader", _glAttachShader),
 	WRAP_FUNC("glBindAttribLocation", _glBindAttribLocation),
@@ -248,10 +286,13 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("glVertexAttrib4fv", _glVertexAttrib4fv),
 	WRAP_FUNC("glVertexAttribPointer", _glVertexAttribPointer),
 	WRAP_FUNC("glViewport", _glViewport),
+	WRAP_FUNC("isspace", isspace),
 	WRAP_FUNC("malloc", malloc),
 	WRAP_FUNC("memcpy", memcpy),
 	WRAP_FUNC("memcmp", memcmp),
 	WRAP_FUNC("memset", memset),
+	WRAP_FUNC("mkdir", mkdir),
+	WRAP_FUNC("printf", __aarch64_printf),
 	WRAP_FUNC("pthread_once", pthread_once_fake),
 	WRAP_FUNC("pthread_create", pthread_create_fake),
 	WRAP_FUNC("pthread_getspecific", ret0),
@@ -270,19 +311,40 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("pthread_setschedparam", ret0),
 	WRAP_FUNC("pthread_setspecific", ret0),
 	WRAP_FUNC("qsort", qsort_fake),
+	WRAP_FUNC("rand", rand),
+	WRAP_FUNC("readdir", readdir),
+	WRAP_FUNC("realloc", realloc),
+	WRAP_FUNC("remove", remove),
+	WRAP_FUNC("sinf", sinf),
 	WRAP_FUNC("snprintf", __aarch64_snprintf),
 	WRAP_FUNC("sprintf", __aarch64_sprintf),
 	WRAP_FUNC("sqrtf", sqrtf),
 	WRAP_FUNC("srand", srand),
+	WRAP_FUNC("sscanf", __aarch64_sscanf),
+	WRAP_FUNC("stpcpy", stpcpy),
 	WRAP_FUNC("strcasecmp", strcasecmp),
+	WRAP_FUNC("strcat", strcat),
 	WRAP_FUNC("strchr", strchr),
 	WRAP_FUNC("strcmp", strcmp),
+	WRAP_FUNC("strcoll", strcoll),
 	WRAP_FUNC("strcpy", strcpy),
+	WRAP_FUNC("strftime", strftime),
 	WRAP_FUNC("strlen", strlen),
+	WRAP_FUNC("strncat", strncat),
 	WRAP_FUNC("strncpy", strncpy),
 	WRAP_FUNC("strncmp", strncmp),
+	WRAP_FUNC("strpbrk", strpbrk),
+	WRAP_FUNC("strrchr", strrchr),
 	WRAP_FUNC("strstr", strstr),
+	WRAP_FUNC("strtod", strtod),
+	WRAP_FUNC("strtof", strtof),
+	WRAP_FUNC("strtok", strtok),
+	WRAP_FUNC("strtoul", strtoul),
+	WRAP_FUNC("tanf", tanf),
 	WRAP_FUNC("tolower", tolower),
+	WRAP_FUNC("toupper", toupper),
+	WRAP_FUNC("towlower", towlower),
+	WRAP_FUNC("towupper", towupper),
 	WRAP_FUNC("vsnprintf", __aarch64_vsnprintf),
 	WRAP_FUNC("wctob", wctob),
 	WRAP_FUNC("wctype", wctype),
@@ -471,17 +533,17 @@ void SetAndroidCurrentLanguage(int lang) {
 }
 
 int exec_patch_hooks(void *dynarec_base_addr) {
-	strcpy((char *)(dynarec_base_addr + so_find_addr_rx("StorageRootBuffer")), "./gamefiles");
-	*(int *)(dynarec_base_addr + so_find_addr_rx("IsAndroidPaused")) = 0;
-	*(uint8_t *)(dynarec_base_addr + so_find_addr_rx("UseRGBA8")) = 1; // Game defaults to RGB565 which is lower quality
+	strcpy((char *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("StorageRootBuffer")), "./gamefiles");
+	*(int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("IsAndroidPaused")) = 0;
+	*(uint8_t *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("UseRGBA8")) = 1; // Game defaults to RGB565 which is lower quality
 	
 	// Filling qsort native functions database
-	qsort_db.insert({(uintptr_t)(dynarec_base_addr + so_find_addr_rx("_ZN7ZIPFile12EntryCompareEPKvS1_")), ZIPFile_EntryCompare});
+	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_ZN7ZIPFile12EntryCompareEPKvS1_")), ZIPFile_EntryCompare});
 	
 	// Vars used in AND_SystemInitialize
-	deviceChip = (int *)(dynarec_base_addr + so_find_addr_rx("deviceChip"));
-	deviceForm = (int *)(dynarec_base_addr + so_find_addr_rx("deviceForm"));
-	definedDevice = (int *)(dynarec_base_addr + so_find_addr_rx("definedDevice"));
+	deviceChip = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("deviceChip"));
+	deviceForm = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("deviceForm"));
+	definedDevice = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("definedDevice"));
 	
 	HOOK_FUNC("_Z24NVThreadGetCurrentJNIEnvv", NVThreadGetCurrentJNIEnv);
 	
@@ -523,7 +585,7 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	HOOK_FUNC("_Z21NVEventEGLSwapBuffersv", NVEventEGLSwapBuffers);
 	
 	// Override screen size
-	*(int64_t *)(dynarec_base_addr + so_find_addr_rx("windowSize")) = ((int64_t)WINDOW_HEIGHT << 32) | (int64_t)WINDOW_WIDTH;
+	*(int64_t *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("windowSize")) = ((int64_t)WINDOW_HEIGHT << 32) | (int64_t)WINDOW_WIDTH;
 	
 	// Disable vibration
 	HOOK_FUNC("_Z12VibratePhonei", ret0);
