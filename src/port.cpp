@@ -595,6 +595,48 @@ int GetAndroidCurrentLanguage(void) {
 void SetAndroidCurrentLanguage(int lang) {
 }
 
+int ReadDataFromPrivateStorage(const char *file, void **data, int *size) {
+	printf("ReadDataFromPrivateStorage %s\n", file);
+
+	FILE *f = fopen(file, "rb");
+	if (!f)
+		return 0;
+
+	fseek(f, 0, SEEK_END);
+	size_t sz = ftell(f);
+	fseek(f, 0, SEEK_SET);
+
+	int ret = 0;
+
+	if (sz > 0) {
+		void *buf = malloc(sz);
+		if (buf && fread(buf, sz, 1, f)) {
+			ret = 1;
+			*size = sz;
+			*data = buf;
+		} else {
+			free(buf);
+		}
+	}
+
+	fclose(f);
+
+	return ret;
+}
+
+int WriteDataToPrivateStorage(const char *file, const void *data, int size) {
+	printf("WriteDataToPrivateStorage %s\n", file);
+
+	FILE *f = fopen(file, "wb");
+	if (!f)
+		return 0;
+
+	const int ret = fwrite(data, size, 1, f);
+	fclose(f);
+
+	return ret;
+}
+
 int exec_patch_hooks(void *dynarec_base_addr) {
 	mkdir("./savegames");
 	
@@ -617,7 +659,12 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	deviceForm = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("deviceForm"));
 	definedDevice = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("definedDevice"));
 	
+	// This hook exists just as a guard to know if we're reaching some code we should patch instead
 	HOOK_FUNC("_Z24NVThreadGetCurrentJNIEnvv", NVThreadGetCurrentJNIEnv);
+	
+	// Hooking these two functions since they rely on JNI which we avoid reimplementing
+	HOOK_FUNC("_Z26ReadDataFromPrivateStoragePKcRPcRi", ReadDataFromPrivateStorage);
+	HOOK_FUNC("_Z25WriteDataToPrivateStoragePKcS0_i", WriteDataToPrivateStorage);
 	
 	// Language override
 	HOOK_FUNC("_Z25GetAndroidCurrentLanguagev", GetAndroidCurrentLanguage);
