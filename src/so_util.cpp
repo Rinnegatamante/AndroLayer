@@ -21,6 +21,50 @@
 #include "dynarec.h"
 #include "so_util.h"
 
+#define	_U	(char)01
+#define	_L	(char)02
+#define	_N	(char)04
+#define	_S	(char)010
+#define _P	(char)020
+#define _C	(char)040
+#define _X	(char)0100
+#define	_B	(char)0200
+
+static const char __BIONIC_ctype_[257] = {0,
+	_C,    _C,    _C,    _C,    _C,    _C,    _C,    _C,
+	_C,    _C|_S, _C|_S, _C|_S, _C|_S, _C|_S, _C,    _C,
+	_C,    _C,    _C,    _C,    _C,    _C,    _C,    _C,
+	_C,    _C,    _C,    _C,    _C,    _C,    _C,    _C,
+	_S|_B, _P,    _P,    _P,    _P,    _P,    _P,    _P,
+	_P,    _P,    _P,    _P,    _P,    _P,    _P,    _P,
+	_N,    _N,    _N,    _N,    _N,    _N,    _N,    _N,
+	_N,    _N,    _P,    _P,    _P,    _P,    _P,    _P,
+	_P,    _U|_X, _U|_X, _U|_X, _U|_X, _U|_X, _U|_X, _U,
+	_U,    _U,    _U,    _U,    _U,    _U,    _U,    _U,
+	_U,    _U,    _U,    _U,    _U,    _U,    _U,    _U,
+	_U,    _U,    _U,    _P,    _P,    _P,    _P,    _P,
+	_P,    _L|_X, _L|_X, _L|_X, _L|_X, _L|_X, _L|_X, _L,
+	_L,    _L,    _L,    _L,    _L,    _L,    _L,    _L,
+	_L,    _L,    _L,    _L,    _L,    _L,    _L,    _L,
+	_L,    _L,    _L,    _P,    _P,    _P,    _P,    _C,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0,
+	0,     0,     0,     0,     0,     0,     0,     0 
+};
+
 so_env so_dynarec_env;
 Dynarmic::A64::Jit *so_dynarec = nullptr;
 Dynarmic::ExclusiveMonitor *so_monitor = nullptr;
@@ -59,7 +103,7 @@ void hook_arm64(uintptr_t addr, dynarec_hook *dst) {
 }
 
 void so_flush_caches(void) {
-	so_dynarec->InvalidateCacheRange((uint64_t)text_base, load_size);
+	so_dynarec->InvalidateCacheRange((uint64_t)load_base, load_size);
 }
 
 void so_free_temp(void) {
@@ -119,7 +163,7 @@ int so_load(const char *filename, void **base_addr) {
 	}
 
 	// align total size to page size
-	load_size = ALIGN_MEM(load_size, 0x1000);
+	load_size = ALIGN_MEM(load_size, 0x10000);
 	if (load_size > DYNAREC_MEMBLK_SIZE) {
 		res = -3;
 		goto err_free_so;
@@ -127,25 +171,23 @@ int so_load(const char *filename, void **base_addr) {
 	printf("Total LOAD size: %llu bytes\n", load_size);
 
 	// allocate space for all load segments (align to page size)
-	printf("Allocating dynarec memblock of %llu bytes\n", DYNAREC_MEMBLK_SIZE);
-	load_base = memalign(0x1000, DYNAREC_MEMBLK_SIZE);
+	printf("Allocating dynarec memblock of %llu bytes\n", load_size);
+	load_base = memalign(0x10000, load_size);
 	if (!load_base)
 		goto err_free_so;
-	memset(load_base, 0, DYNAREC_MEMBLK_SIZE);
+	memset(load_base, 0, load_size);
 	
 	// copy segments to where they belong
 
 	// text
 	text_size = prog_hdr[text_segno].p_memsz;
 	text_base = (void *)(prog_hdr[text_segno].p_vaddr + (Elf64_Addr)load_base);
-	text_base = (void *)ALIGN_MEM((uintptr_t)text_base, 0x1000);
 	prog_hdr[text_segno].p_vaddr = (Elf64_Addr)text_base;
 	memcpy(text_base, (void *)((uintptr_t)so_base + prog_hdr[text_segno].p_offset), prog_hdr[text_segno].p_filesz);
 
 	// data
 	data_size = prog_hdr[data_segno].p_memsz;
 	data_base = (void *)(prog_hdr[data_segno].p_vaddr + (Elf64_Addr)load_base);
-	//data_base = (void *)ALIGN_MEM((uintptr_t)data_base, 0x1000);
 	prog_hdr[data_segno].p_vaddr = (Elf64_Addr)data_base;
 	memcpy(data_base, (void *)((uintptr_t)so_base + prog_hdr[data_segno].p_offset), prog_hdr[data_segno].p_filesz);
 
@@ -162,7 +204,7 @@ int so_load(const char *filename, void **base_addr) {
 		}
 	}
 	
-	*base_addr = text_base;
+	*base_addr = load_base;
 
 	if (syms == NULL || dynstrtab == NULL) {
 		res = -2;
@@ -192,6 +234,11 @@ uintptr_t get_trampoline(const char *name, dynarec_import *funcs, int num_funcs)
 			else
 				return (uintptr_t)funcs[k].symbol;
 		}
+	}
+	
+	// Redirect _ctype_ to BIONIC variant
+	if (strcmp(name, "_ctype_") == 0) {
+		return (uintptr_t)__BIONIC_ctype_;
 	}
 	
 	printf("Unresolved import: %s\n", name);
