@@ -6,7 +6,14 @@
  * of the MIT license.	See the LICENSE file for details.
  */
 
+
 #include <stdlib.h>
+#ifdef __MINGW64__
+#include <intrin.h>
+#include <malloc.h>
+#include <windows.h>
+#define memalign(x, y) _aligned_malloc(y, x)
+#endif
 #include <string.h>
 #include <map>
 
@@ -21,9 +28,11 @@ Dynarmic::A64::UserConfig so_dynarec_cfg;
 uint8_t so_stack[1024 * 1024 * 8];
 
 void *text_base;
+void *aligned_text_base;
 size_t text_size;
 
 void *data_base;
+void *aligned_data_base;
 size_t data_size;
 
 static void *load_base;
@@ -50,7 +59,7 @@ void hook_arm64(uintptr_t addr, dynarec_hook *dst) {
 }
 
 void so_flush_caches(void) {
-	so_dynarec->InvalidateCacheRange((uint64_t)load_base, load_size);
+	so_dynarec->InvalidateCacheRange((uint64_t)text_base, load_size);
 }
 
 void so_free_temp(void) {
@@ -119,7 +128,7 @@ int so_load(const char *filename, void **base_addr) {
 
 	// allocate space for all load segments (align to page size)
 	printf("Allocating dynarec memblock of %llu bytes\n", DYNAREC_MEMBLK_SIZE);
-	load_base = malloc(DYNAREC_MEMBLK_SIZE);
+	load_base = memalign(0x1000, DYNAREC_MEMBLK_SIZE);
 	if (!load_base)
 		goto err_free_so;
 	memset(load_base, 0, DYNAREC_MEMBLK_SIZE);
@@ -129,14 +138,14 @@ int so_load(const char *filename, void **base_addr) {
 	// text
 	text_size = prog_hdr[text_segno].p_memsz;
 	text_base = (void *)(prog_hdr[text_segno].p_vaddr + (Elf64_Addr)load_base);
-	text_base = (void *)ALIGN_MEM((uintptr_t)text_base, prog_hdr[text_segno].p_align);
+	text_base = (void *)ALIGN_MEM((uintptr_t)text_base, 0x1000);
 	prog_hdr[text_segno].p_vaddr = (Elf64_Addr)text_base;
 	memcpy(text_base, (void *)((uintptr_t)so_base + prog_hdr[text_segno].p_offset), prog_hdr[text_segno].p_filesz);
 
 	// data
 	data_size = prog_hdr[data_segno].p_memsz;
 	data_base = (void *)(prog_hdr[data_segno].p_vaddr + (Elf64_Addr)load_base);
-	data_base = (void *)ALIGN_MEM((uintptr_t)data_base, prog_hdr[data_segno].p_align);
+	//data_base = (void *)ALIGN_MEM((uintptr_t)data_base, 0x1000);
 	prog_hdr[data_segno].p_vaddr = (Elf64_Addr)data_base;
 	memcpy(data_base, (void *)((uintptr_t)so_base + prog_hdr[data_segno].p_offset), prog_hdr[data_segno].p_filesz);
 
@@ -163,7 +172,11 @@ int so_load(const char *filename, void **base_addr) {
 	return 0;
 
 err_free_load:
+#ifdef __MINGW64__
+	_aligned_free(load_base);
+#else
 	free(load_base);
+#endif
 err_free_so:
 	free(so_base);
 
@@ -185,7 +198,7 @@ uintptr_t get_trampoline(const char *name, dynarec_import *funcs, int num_funcs)
 	return (uintptr_t)unresolved_stub_token;
 }
 
-int so_relocate(dynarec_import *funcs, int num_funcs) {
+int so_relocate() {
 	for (int i = 0; i < elf_hdr->e_shnum; i++) {
 		char *sh_name = shstrtab + sec_hdr[i].sh_name;
 		if (strcmp(sh_name, ".rela.dyn") == 0 || strcmp(sh_name, ".rela.plt") == 0) {
@@ -197,22 +210,45 @@ int so_relocate(dynarec_import *funcs, int num_funcs) {
 				int type = ELF64_R_TYPE(rels[j].r_info);
 				switch (type) {
 					case R_AARCH64_RELATIVE:
-						// sometimes the value of r_addend is also at *ptr
 						*ptr = (uintptr_t)text_base + rels[j].r_addend;
 						break;
-					case R_ARM_RELATIVE:
-						*ptr += (uintptr_t)text_base;
-						break;
 					case R_AARCH64_ABS64:
+						*ptr += (uintptr_t)text_base + sym->st_value + rels[j].r_addend;
+						break;
 					case R_AARCH64_GLOB_DAT:
 					case R_AARCH64_JUMP_SLOT:
 					{
 						if (sym->st_shndx != SHN_UNDEF) {
-							if (type == R_AARCH64_ABS64)
-								*ptr += (uintptr_t)text_base + sym->st_value;
-							else
-								*ptr = (uintptr_t)text_base + sym->st_value + rels[j].r_addend;
-						} else {
+							*ptr = (uintptr_t)text_base + sym->st_value + rels[j].r_addend;
+						}
+						break;
+					}
+
+					default:
+						printf("Error: unknown relocation type:\n%x\n", type);
+						break;
+				}
+			}
+		}
+	}
+	return 0;
+}
+
+int so_resolve(dynarec_import *funcs, int num_funcs) {
+	for (int i = 0; i < elf_hdr->e_shnum; i++) {
+		char *sh_name = shstrtab + sec_hdr[i].sh_name;
+		if (strcmp(sh_name, ".rela.dyn") == 0 || strcmp(sh_name, ".rela.plt") == 0) {
+			Elf64_Rela *rels = (Elf64_Rela *)((uintptr_t)text_base + sec_hdr[i].sh_addr);
+			for (int j = 0; j < sec_hdr[i].sh_size / sizeof(Elf64_Rela); j++) {
+				uintptr_t *ptr = (uintptr_t *)((uintptr_t)text_base + rels[j].r_offset);
+				Elf64_Sym *sym = &syms[ELF64_R_SYM(rels[j].r_info)];
+
+				int type = ELF64_R_TYPE(rels[j].r_info);
+				switch (type) {
+					case R_AARCH64_GLOB_DAT:
+					case R_AARCH64_JUMP_SLOT:
+					{
+						if (sym->st_shndx == SHN_UNDEF) {
 							char *name = dynstrtab + sym->st_name;
 							uintptr_t link = get_trampoline(name, funcs, num_funcs);
 							*ptr = (uintptr_t)link;
@@ -221,7 +257,6 @@ int so_relocate(dynarec_import *funcs, int num_funcs) {
 					}
 
 					default:
-						printf("Error: unknown relocation type:\n%x\n", type);
 						break;
 				}
 			}

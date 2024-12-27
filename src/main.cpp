@@ -119,7 +119,8 @@ int main() {
 	
 	// Relocate jumps and function calls to our dynarec virtual addresses
 	printf("Executing relocations and imports resolving...\n");
-	so_relocate(dynarec_imports, dynarec_imports_num);
+	so_relocate();
+	so_resolve(dynarec_imports, dynarec_imports_num);
 	
 	// Execute hook patches
 	printf("Applying hook patches...\n");
