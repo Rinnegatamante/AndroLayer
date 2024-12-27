@@ -191,11 +191,17 @@ double powd(double n, double n2) { return pow(n, n2); }
 double sind(double n) { return sin(n); }
 double sqrtd(double n) { return sqrt(n); }
 
+// BIONIC ctype implementation
+size_t __ctype_get_mb_cur_max() {
+	return 1;
+}
+
 /*
  * List of imports to be resolved with native variants
  */
 #define WRAP_FUNC(name, func) gen_wrapper<&func>(name)
 dynarec_import dynarec_imports[] = {
+	WRAP_FUNC("__ctype_get_mb_cur_max", __ctype_get_mb_cur_max),
 	WRAP_FUNC("__android_log_print", __android_log_print),
 	WRAP_FUNC("__google_potentially_blocking_region_begin", ret0),
 	WRAP_FUNC("__google_potentially_blocking_region_end", ret0),
@@ -355,6 +361,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("pthread_self", pthread_self),
 	WRAP_FUNC("pthread_setschedparam", ret0),
 	WRAP_FUNC("pthread_setspecific", ret0),
+	WRAP_FUNC("putc", putc),
 	WRAP_FUNC("putwc", putwc),
 	WRAP_FUNC("qsort", qsort_fake),
 	WRAP_FUNC("rand", rand),
@@ -397,6 +404,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("toupper", toupper),
 	WRAP_FUNC("towlower", towlower),
 	WRAP_FUNC("towupper", towupper),
+	WRAP_FUNC("ungetc", ungetc),
 	WRAP_FUNC("ungetwc", ungetwc),
 	WRAP_FUNC("usleep", usleep),
 	WRAP_FUNC("vsnprintf", __aarch64_vsnprintf),
@@ -639,10 +647,7 @@ int WriteDataToPrivateStorage(const char *file, const void *data, int size) {
 
 int exec_patch_hooks(void *dynarec_base_addr) {
 	mkdir("./savegames");
-	
-	// FIXME: This should be 6 but, for some reason, it's defaulted to 0 (?)
-	*(int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("numRASFiles")) = 6;
-	
+
 	strcpy((char *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("StorageRootBuffer")), ".");
 	*(int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("IsAndroidPaused")) = 0;
 	*(uint8_t *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("UseRGBA8")) = 1; // Game defaults to RGB565 which is lower quality
