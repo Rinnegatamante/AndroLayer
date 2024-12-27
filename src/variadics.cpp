@@ -7,6 +7,55 @@
 #include "variadics.h"
 #include "dynarec.h"
 
+#define parse_token(s) \
+	switch (*s) { \
+		case '0': \
+		case '1': \
+		case '2': \
+		case '3': \
+		case '4': \
+		case '5': \
+		case '6': \
+		case '7': \
+		case '8': \
+		case '9': \
+			s++; \
+			goto PROCESS_VAR; \
+			break; \
+		case 'h': \
+			var_size--; \
+			s++; \
+			goto PROCESS_VAR; \
+			break; \
+		case 'l': \
+			var_size++; \
+			s++; \
+			goto PROCESS_VAR; \
+			break; \
+		case 'f': \
+			var_type = VAR_FLOAT; \
+			break; \
+		case 'd': \
+		case 'i': \
+			var_type = VAR_SIGNED_INTEGER; \
+			break; \
+		case 'u': \
+		case 'x': \
+		case 'X': \
+			var_type = VAR_UNSIGNED_INTEGER; \
+			break; \
+		case 's': \
+			var_type = VAR_STRING; \
+			break; \
+		default: \
+			printf("Unrecognized format token %c\n", *s); \
+			break; \
+		} \
+		if (var_type == VAR_UNKNOWN) { \
+			printf("Failure parsing va_list with format %s due to unknown var type\n", format); \
+			abort(); \
+		}
+
 std::string parse_format(const char *format, int startReg) {
 	uintptr_t sp = so_dynarec->GetSP();
 	std::string res = format;
@@ -25,50 +74,7 @@ std::string parse_format(const char *format, int startReg) {
 		{
 			s++;
 PROCESS_VAR:
-			switch (*s) {
-			case '0':
-			case '1':
-			case '2':
-			case '3':
-			case '4':
-			case '5':
-			case '6':
-			case '7':
-			case '8':
-			case '9':
-				s++;
-				goto PROCESS_VAR;
-				break;
-			case 'h':
-				var_size--;
-				s++;
-				goto PROCESS_VAR;
-				break;
-			case 'l':
-				var_size++;
-				s++;
-				goto PROCESS_VAR;
-				break;
-			case 'f':
-				var_type = VAR_FLOAT;
-				break;
-			case 'd':
-			case 'i':
-				var_type = VAR_SIGNED_INTEGER;
-				break;
-			case 'u':
-			case 'x':
-			case 'X':
-				var_type = VAR_UNSIGNED_INTEGER;
-				break;
-			case 's':
-				var_type = VAR_STRING;
-				break;
-			}
-			if (var_type == VAR_UNKNOWN) {
-				printf("Failure parsing va_list with format %s due to unknown var type\n", format);
-				abort();
-			}
+			parse_token(s)
 			s++;
 			size_t end_offs = (size_t)(s - format);
 			char token[8];
@@ -150,36 +156,7 @@ std::string parse_va_list(const char *format, __aarch64_va_list *va) {
 		{
 			s++;
 PROCESS_VAR:
-			switch (*s) {
-			case 'h':
-				var_size--;
-				s++;
-				goto PROCESS_VAR;
-				break;
-			case 'l':
-				var_size++;
-				s++;
-				goto PROCESS_VAR;
-				break;
-			case 'f':
-				var_type = VAR_FLOAT;
-				break;
-			case 'd':
-				var_type = VAR_SIGNED_INTEGER;
-				break;
-			case 'u':
-			case 'x':
-			case 'X':
-				var_type = VAR_UNSIGNED_INTEGER;
-				break;
-			case 's':
-				var_type = VAR_STRING;
-				break;
-			}
-			if (var_type == VAR_UNKNOWN) {
-				printf("Failure parsing va_list with format %s due to unknown var type\n", format);
-				abort();
-			}
+			parse_token(s)
 			s++;
 			size_t end_offs = (size_t)(s - format);
 			char token[8];
