@@ -44,20 +44,13 @@ int __cxa_atexit_fake(void (*func) (void *), void *arg, void *dso_handle)
 	return 0;
 }
 
-thread_local void (*_tls__init_func)(void) = nullptr;
-thread_local Dynarmic::A64::Jit *_tls__init_func_jit = nullptr;
+int pthread_once_fake(pthread_once_t *__once_control, void (*__init_routine) (void)) {
+	if (*__once_control == PTHREAD_ONCE_INIT) {
+		so_run_fiber(so_dynarec, (uintptr_t)__init_routine);
+		*__once_control = !PTHREAD_ONCE_INIT;
+	}
 
-int pthread_once_fake (Dynarmic::A64::Jit *jit, pthread_once_t *__once_control, void (*__init_routine) (void))
-{
-	// Store the current pthread_once elements
-	_tls__init_func = __init_routine;
-	_tls__init_func_jit = jit;
-	// call pthread_once with a custom routine to callback the jit
-	return pthread_once(__once_control, []() {
-		uintptr_t entry_point = (uintptr_t)_tls__init_func;
-		Dynarmic::A64::Jit *jit = _tls__init_func_jit;
-		so_run_fiber(jit, entry_point);
-	});
+	return 0;
 }
 
 int pthread_create_fake (Dynarmic::A64::Jit *jit, pthread_t *__restrict __newthread,
@@ -106,8 +99,9 @@ int pthread_mutex_lock_fake(pthread_mutex_t** uid) {
 		int attr = 1; // recursive
 		ret = pthread_mutex_init_fake(uid, &attr);
 	}
-	if (ret < 0)
+	if (ret < 0) {
 		return ret;
+	}
 	return pthread_mutex_lock(*uid);
 }
 
@@ -145,7 +139,7 @@ void qsort_fake(void *base, size_t num, size_t width, int(*compare)(const void *
 		printf("Fatal error: Invalid qsort function: %llx\n", (uintptr_t)compare - (uintptr_t)dynarec_base_addr);
 		abort();
 	}
-	return qsort(base, num, width, native_f->second);
+	qsort(base, num, width, native_f->second);
 }
 
 // bsearch uses AARCH64 functions, so we map them to native variants
@@ -250,6 +244,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("fseek", fseek),
 	WRAP_FUNC("ftell", ftell),
 	WRAP_FUNC("fwrite", fwrite),
+	WRAP_FUNC("getc", getc),
 	WRAP_FUNC("getenv", ret0),
 	WRAP_FUNC("gettimeofday", gettimeofday_hook),
 	WRAP_FUNC("getwc", getwc),
@@ -357,7 +352,6 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("pthread_mutex_init", pthread_mutex_init_fake),
 	WRAP_FUNC("pthread_mutex_lock", pthread_mutex_lock_fake),
 	WRAP_FUNC("pthread_mutex_unlock", pthread_mutex_unlock_fake),
-	WRAP_FUNC("pthread_once", pthread_once_fake),
 	WRAP_FUNC("pthread_self", pthread_self),
 	WRAP_FUNC("pthread_setschedparam", ret0),
 	WRAP_FUNC("pthread_setspecific", ret0),
