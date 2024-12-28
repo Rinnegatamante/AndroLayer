@@ -58,6 +58,7 @@ int pthread_create_fake (Dynarmic::A64::Jit *jit, pthread_t *__restrict __newthr
 			   void *(*__start_routine) (void *),
 			   void *__restrict __arg)
 {
+	printf("NOIMPL: pthread_create called\n");
 	std::abort();
 	return 0;
 }
@@ -132,6 +133,9 @@ int ZIPFile_EntryCompare(const void *key, const void *element) {
 int RASFileNameComp(const void *key, const void *element) {
 	return strcasecmp(*(const char **)key, *(const char **)element);
 }
+int FontCmp(const void *key, const void *element) {
+	return *(int *)((uintptr_t)element + 4) - *(int *)((uintptr_t)key + 4);
+}
 std::unordered_map<uintptr_t, int (*)(const void *, const void *)> qsort_db;
 void qsort_fake(void *base, size_t num, size_t width, int(*compare)(const void *key, const void *element)) {
 	auto native_f = qsort_db.find((uintptr_t)compare);
@@ -201,11 +205,11 @@ size_t __ctype_get_mb_cur_max() {
  */
 #define WRAP_FUNC(name, func) gen_wrapper<&func>(name)
 dynarec_import dynarec_imports[] = {
-	WRAP_FUNC("__ctype_get_mb_cur_max", __ctype_get_mb_cur_max),
 	WRAP_FUNC("__android_log_print", __android_log_print),
+	WRAP_FUNC("__ctype_get_mb_cur_max", __ctype_get_mb_cur_max),
+	WRAP_FUNC("__cxa_atexit", __cxa_atexit_fake),
 	WRAP_FUNC("__google_potentially_blocking_region_begin", ret0),
 	WRAP_FUNC("__google_potentially_blocking_region_end", ret0),
-	WRAP_FUNC("__cxa_atexit", __cxa_atexit_fake),
 	WRAP_FUNC("AAssetManager_open", ret0),
 	WRAP_FUNC("AAssetManager_fromJava", ret0),
 	WRAP_FUNC("AAsset_close", ret0),
@@ -368,6 +372,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("readdir", readdir),
 	WRAP_FUNC("realloc", realloc),
 	WRAP_FUNC("remove", remove),
+	WRAP_FUNC("setjmp", ret0),
 	WRAP_FUNC("sin", sind),
 	WRAP_FUNC("sinf", sinf),
 	WRAP_FUNC("snprintf", __aarch64_snprintf),
@@ -655,6 +660,7 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	// Filling qsort native functions database
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_ZN7ZIPFile12EntryCompareEPKvS1_")), ZIPFile_EntryCompare});
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z15RASFileNameCompPKvS0_")), RASFileNameComp});
+	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_ZNK6P_Text11getPositionEv") + 4), FontCmp});
 	
 	// Filling bsearch native functions database
 	bsearch_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z15RASFileNameCompPKvS0_")), RASFileNameComp});
