@@ -27,6 +27,12 @@ enum {
 	VAR_STRING
 };
 
+#if 1
+#define variadic_printf
+#else
+#define variadic_printf printf
+#endif
+
 #define __aarch64_va_arg(type, va, is_float) \
 	({ \
 		type r; \
@@ -38,7 +44,7 @@ enum {
 				va->__vr_offs += nreg * 16; \
 				if (va->__vr_offs < 0) { \
 					r = *(type *)((uintptr_t)va->__vr_top + offs); \
-					printf("arg is on VR on %llx + %d\n", va->__vr_top, offs); \
+					variadic_printf("arg is on VR on %llx + %d\n", va->__vr_top, offs); \
 					done = 1; \
 				} \
 			} \
@@ -49,7 +55,7 @@ enum {
 				va->__gr_offs += nreg * 8; \
 				if (va->__gr_offs < 0) { \
 					r = *(type *)((uintptr_t)va->__gr_top + offs); \
-					printf("arg is on GR on %llx + %d\n", va->__gr_top, offs); \
+					variadic_printf("arg is on GR on %llx + %d\n", va->__gr_top, offs); \
 					done = 1; \
 				} \
 			} \
@@ -59,7 +65,7 @@ enum {
 			if (alignof(type) > 8) \
 				arg = (arg + 15) & -16; \
 			va->__stack = (void *)((arg + sizeof(type) + 7) & -8); \
-			printf("arg is on stack on %llx\n", arg); \
+			variadic_printf("arg is on stack on %llx\n", arg); \
 			r = *(type *)arg; \
 		} \
 		r; \
@@ -67,6 +73,8 @@ enum {
 
 std::string parse_va_list(const char *format, __aarch64_va_list *va);
 std::string parse_format(const char *format, int startReg);
+
+size_t count_args(const char *format);
 
 // Re-implementation of most popular libc variadic functions
 int __aarch64_fprintf(FILE *fp, char *format);

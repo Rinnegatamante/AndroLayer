@@ -128,14 +128,38 @@ PROCESS_VAR:
 				sprintf(tmp, token, onStack ? *(double*)sp : (double)so_dynarec->GetRegister(startReg++));
 				break;
 			}
-			printf("Argument decoded: %s\n", tmp);
+			//printf("Argument decoded: %s\n", tmp);
 			res.replace(str_offs + start_offs, end_offs - start_offs, tmp);
 			str_offs = res.size() - orig_sz;
 		}
 		s = strstr(s, "%");
 	}
 	
-	printf("Finished parsing va_list %s -> %s\n", format, res.c_str());
+	//printf("Finished parsing va_list %s -> %s\n", format, res.c_str());
+	return res;
+}
+
+size_t count_args(const char *format) {
+	size_t res = 0;
+	char *s = strstr(format, "%");
+	while (s) {
+		int var_size = VAR_DEFAULT;
+		int var_type = VAR_UNKNOWN;
+		if (s[1] == '%') {
+			s += 2;
+		}
+		else
+		{
+			s++;
+PROCESS_VAR:
+			parse_token(s)
+			s++;
+			res++;
+		}
+		s = strstr(s, "%");
+	}
+	
+	//printf("Finished counting arguments in %s -> %u\n", format, res);
 	return res;
 }
 
@@ -205,7 +229,7 @@ PROCESS_VAR:
 				sprintf(tmp, token, __aarch64_va_arg(double, va, 1));
 				break;
 			}
-			printf("Argument decoded: %s\n", tmp);
+			//printf("Argument decoded: %s\n", tmp);
 			res.replace(str_offs + start_offs, end_offs - start_offs, tmp);
 			str_offs = res.size() - orig_sz;
 		}
@@ -252,7 +276,42 @@ int __aarch64_printf(const char *format) {
 	return printf("%s", s.c_str());
 }
 
+#define MAX_SSCANF_OUTS (8)
 int __aarch64_sscanf(const char *buffer, const char *format) {
-	std::string s = parse_format(format, 2);
-	return sscanf(buffer, "%s", s.c_str());
+	size_t num_args = count_args(format);
+	uintptr_t sp = so_dynarec->GetSP();
+	int startReg = 2;
+	uintptr_t out_ptrs[MAX_SSCANF_OUTS];
+	bool onStack = false;
+	for (size_t i = 0; i < num_args; i++) {
+		if (startReg >= 7) {
+			sp -= 8;
+			onStack = true;
+		}
+		out_ptrs[i] = (uintptr_t)(onStack ? *(char **)sp : (char *)so_dynarec->GetRegister(startReg++));
+	}
+
+	switch (num_args) {
+	case 0:
+		return sscanf(buffer, format, out_ptrs[0]);
+	case 1:
+		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1]);
+	case 2:
+		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2]);
+	case 3:
+		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3]);
+	case 4:
+		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3], out_ptrs[4]);
+	case 5:
+		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3], out_ptrs[4], out_ptrs[5]);
+	case 6:
+		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3], out_ptrs[4], out_ptrs[5], out_ptrs[6]);
+	case 7:
+		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3], out_ptrs[4], out_ptrs[5], out_ptrs[6], out_ptrs[7]);
+	default:
+		printf("Failure running sscanf on %s. Too many arguments\n", format);
+		abort();
+	break;
+	}
+	return 0;
 }
