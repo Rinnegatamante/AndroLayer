@@ -8,6 +8,8 @@
 #include "dynarec.h"
 
 #define MAX_SSCANF_OUTS (8)
+extern FILE *stderr_fake;
+
 #define parse_token(s) \
 	switch (*s) { \
 		case '0': \
@@ -269,6 +271,9 @@ int __aarch64_snprintf(char *buffer, size_t n, const char *format) {
 
 int __aarch64_fprintf(FILE *fp, char *format) {
 	std::string s = parse_format(format, 2);
+	if (fp == stderr_fake) {
+		return printf("[stderr] %s\n", s.c_str());
+	}
 	return fprintf(fp, "%s", s.c_str());
 }
 
@@ -288,7 +293,7 @@ int __aarch64_sscanf(const char *buffer, const char *format) {
 			sp -= 8;
 			onStack = true;
 		}
-		out_ptrs[i] = onStack ? *(uintptr_t *)sp : (uintptr_t)so_dynarec->GetRegister(startReg++));
+		out_ptrs[i] = onStack ? *(uintptr_t *)sp : (uintptr_t)so_dynarec->GetRegister(startReg++);
 	}
 
 	switch (num_args) {

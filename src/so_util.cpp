@@ -13,7 +13,10 @@
 #include <malloc.h>
 #include <windows.h>
 #define memalign(x, y) _aligned_malloc(y, x)
+#else
+#include <malloc.h>
 #endif
+#include <stdio.h>
 #include <string.h>
 #include <map>
 
@@ -23,6 +26,7 @@
 
 extern uintptr_t __stack_chk_fail;
 static uint64_t __stack_chk_guard_fake = 0x4242424242424242;
+FILE *stderr_fake = (FILE*)0xDEADBEEFDEADBEEF;
 
 #define	_U	(char)01
 #define	_L	(char)02
@@ -242,13 +246,14 @@ uintptr_t get_trampoline(const char *name, dynarec_import *funcs, int num_funcs)
 	// Redirect _ctype_ to BIONIC variant
 	if (strcmp(name, "_ctype_") == 0) {
 		return (uintptr_t)__BIONIC_ctype_;
-	}
-	
 	// Redirect stack guard related pointers
-	if (strcmp(name, "__stack_chk_guard") == 0) {
+	} else if (strcmp(name, "__stack_chk_guard") == 0) {
 		return (uintptr_t)&__stack_chk_guard_fake;
 	} else if (strcmp(name, "__stack_chk_fail") == 0) {
 		return __stack_chk_fail;
+	// Redirect stderr to fake one so that we can intercept it in __aarch64_fprintf
+	} else if (strcmp(name, "stderr") == 0) {
+		return (uintptr_t)&stderr_fake;
 	}
 	
 	printf("Unresolved import: %s\n", name);
@@ -323,13 +328,17 @@ int so_resolve(dynarec_import *funcs, int num_funcs) {
 	return 0;
 }
 
+extern void *dynarec_base_addr;
+
 void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry)
 {
 	jit->SetRegister(REG_FP, (uintptr_t)end_program_token);
 	jit->SetPC(entry);
+	printf("Run 0x%llx with end_program_token %llx\n", entry - (uintptr_t)text_base, end_program_token);
 	Dynarmic::HaltReason reason = {};
 	while ((reason = jit->Run()) == Dynarmic::HaltReason::UserDefined2) {
 		auto host_next = (void (*)(void *))jit->GetRegister(16);
+		//printf("host_next 0x%llx\n", host_next);
 		host_next((void*)jit);
 	}
 	if (reason != Dynarmic::HaltReason::UserDefined1) {
@@ -339,12 +348,14 @@ void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry)
 }
 
 void so_execute_init_array(void) {
+	printf("so_execute_init_array called\n");
 	for (int i = 0; i < elf_hdr->e_shnum; i++) {
 		char *sh_name = shstrtab + sec_hdr[i].sh_name;
 		if (strcmp(sh_name, ".init_array") == 0) {
 			int (** init_array)() = (int (**)())((uintptr_t)text_base + sec_hdr[i].sh_addr);
 			for (int j = 0; j < sec_hdr[i].sh_size / 8; j++) {
 				if (init_array[j] != 0) {
+					printf("init_array on 0x%llx\n", (uintptr_t)init_array[j]);
 					so_run_fiber(so_dynarec, (uintptr_t)init_array[j]);
 				}
 			}
