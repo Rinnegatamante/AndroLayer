@@ -7,6 +7,7 @@
 #include "variadics.h"
 #include "dynarec.h"
 
+#define MAX_SSCANF_OUTS (8)
 #define parse_token(s) \
 	switch (*s) { \
 		case '0': \
@@ -276,7 +277,6 @@ int __aarch64_printf(const char *format) {
 	return printf("%s", s.c_str());
 }
 
-#define MAX_SSCANF_OUTS (8)
 int __aarch64_sscanf(const char *buffer, const char *format) {
 	size_t num_args = count_args(format);
 	uintptr_t sp = so_dynarec->GetSP();
@@ -288,25 +288,27 @@ int __aarch64_sscanf(const char *buffer, const char *format) {
 			sp -= 8;
 			onStack = true;
 		}
-		out_ptrs[i] = (uintptr_t)(onStack ? *(char **)sp : (char *)so_dynarec->GetRegister(startReg++));
+		out_ptrs[i] = onStack ? *(uintptr_t *)sp : (uintptr_t)so_dynarec->GetRegister(startReg++));
 	}
 
 	switch (num_args) {
 	case 0:
-		return sscanf(buffer, format, out_ptrs[0]);
+		return sscanf(buffer, format);
 	case 1:
-		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1]);
+		return sscanf(buffer, format, out_ptrs[0]);
 	case 2:
-		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2]);
+		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1]);
 	case 3:
-		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3]);
+		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2]);
 	case 4:
-		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3], out_ptrs[4]);
+		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3]);
 	case 5:
-		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3], out_ptrs[4], out_ptrs[5]);
+		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3], out_ptrs[4]);
 	case 6:
-		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3], out_ptrs[4], out_ptrs[5], out_ptrs[6]);
+		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3], out_ptrs[4], out_ptrs[5]);
 	case 7:
+		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3], out_ptrs[4], out_ptrs[5], out_ptrs[6]);
+	case 8:
 		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3], out_ptrs[4], out_ptrs[5], out_ptrs[6], out_ptrs[7]);
 	default:
 		printf("Failure running sscanf on %s. Too many arguments\n", format);

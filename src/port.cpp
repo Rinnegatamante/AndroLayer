@@ -127,7 +127,7 @@ FILE *fopen_fake(char *fname, char *mode) {
 
 // qsort uses AARCH64 functions, so we map them to native variants
 int ZIPFile_EntryCompare(const void *key, const void *element) {
-	return strcasecmp(*((const char **)key + 1), *((const char **)element + 1));
+	return strcasecmp(*((const char **)((uintptr_t)key + 8)), *((const char **)((uintptr_t)element + 8)));
 }
 int RASFileNameComp(const void *key, const void *element) {
 	return strcasecmp(*(const char **)key, *(const char **)element);
