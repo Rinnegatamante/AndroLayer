@@ -311,7 +311,7 @@ int __aarch64_sscanf(const char *buffer, const char *format) {
 	default:
 		printf("Failure running sscanf on %s. Too many arguments\n", format);
 		abort();
-	break;
+		break;
 	}
 	return 0;
 }

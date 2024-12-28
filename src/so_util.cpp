@@ -21,6 +21,9 @@
 #include "dynarec.h"
 #include "so_util.h"
 
+extern uintptr_t __stack_chk_fail;
+static uint64_t __stack_chk_guard_fake = 0x4242424242424242;
+
 #define	_U	(char)01
 #define	_L	(char)02
 #define	_N	(char)04
@@ -239,6 +242,13 @@ uintptr_t get_trampoline(const char *name, dynarec_import *funcs, int num_funcs)
 	// Redirect _ctype_ to BIONIC variant
 	if (strcmp(name, "_ctype_") == 0) {
 		return (uintptr_t)__BIONIC_ctype_;
+	}
+	
+	// Redirect stack guard related pointers
+	if (strcmp(name, "__stack_chk_guard") == 0) {
+		return (uintptr_t)&__stack_chk_guard_fake;
+	} else if (strcmp(name, "__stack_chk_fail") == 0) {
+		return __stack_chk_fail;
 	}
 	
 	printf("Unresolved import: %s\n", name);

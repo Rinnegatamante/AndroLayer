@@ -123,24 +123,10 @@ public:
 	template<typename... Args>
 	static auto bridge_impl(Args... args)
 	{
-#ifndef NDEBUG
-		int i = 0;
-		if (symname) {
-			std::cout << symname;
-			((std::cout << ((i++) ? ", " : "(") << as_void_ptr_if_pointer(args)), ...);
-			std::cout << ")";
-		}
-#endif
 		if constexpr (std::is_void_v<ReturnType>) {
-#ifndef NDEBUG
-			std::cout << "\n";
-#endif
 			func(args...);
 		} else {
 			ReturnType ret = func(args...);
-#ifndef NDEBUG
-			std::cout << " => " << ret << "\n";
-#endif
 			return ret;
 		}
 	}
