@@ -22,6 +22,7 @@ extern Dynarmic::A64::UserConfig so_dynarec_cfg;
 extern Dynarmic::ExclusiveMonitor *so_monitor;
 extern uint8_t so_stack[1024 * 1024 * 8];
 extern uint64_t tpidr_el0[0x40];
+extern void *dynarec_base_addr;
 
 class so_env final : public Dynarmic::A64::UserCallbacks {
 public:
@@ -103,28 +104,28 @@ public:
 	}
 	
 	bool MemoryWriteExclusive8(std::uint64_t vaddr, std::uint8_t value, [[maybe_unused]] std::uint8_t expected) override {
-        MemoryWrite8(vaddr, value);
-        return true;
-    }
-    bool MemoryWriteExclusive16(std::uint64_t vaddr, std::uint16_t value, [[maybe_unused]] std::uint16_t expected) override {
-        MemoryWrite16(vaddr, value);
-        return true;
-    }
-    bool MemoryWriteExclusive32(std::uint64_t vaddr, std::uint32_t value, [[maybe_unused]] std::uint32_t expected) override {
-        MemoryWrite32(vaddr, value);
-        return true;
-    }
-    bool MemoryWriteExclusive64(std::uint64_t vaddr, std::uint64_t value, [[maybe_unused]] std::uint64_t expected) override {
-        MemoryWrite64(vaddr, value);
-        return true;
-    }
-    bool MemoryWriteExclusive128(std::uint64_t vaddr, Dynarmic::A64::Vector value, [[maybe_unused]] Dynarmic::A64::Vector expected) override {
-        MemoryWrite128(vaddr, value);
-        return true;
-    }
+		MemoryWrite8(vaddr, value);
+		return true;
+	}
+	bool MemoryWriteExclusive16(std::uint64_t vaddr, std::uint16_t value, [[maybe_unused]] std::uint16_t expected) override {
+		MemoryWrite16(vaddr, value);
+		return true;
+	}
+	bool MemoryWriteExclusive32(std::uint64_t vaddr, std::uint32_t value, [[maybe_unused]] std::uint32_t expected) override {
+		MemoryWrite32(vaddr, value);
+		return true;
+	}
+	bool MemoryWriteExclusive64(std::uint64_t vaddr, std::uint64_t value, [[maybe_unused]] std::uint64_t expected) override {
+		MemoryWrite64(vaddr, value);
+		return true;
+	}
+	bool MemoryWriteExclusive128(std::uint64_t vaddr, Dynarmic::A64::Vector value, [[maybe_unused]] Dynarmic::A64::Vector expected) override {
+		MemoryWrite128(vaddr, value);
+		return true;
+	}
 
 	void InterpreterFallback(std::uint64_t pc, size_t num_instructions) override {
-		printf("Interpreter fallback: 0x%llx with %u instructions\n", pc, num_instructions);
+		printf("Interpreter fallback: 0x%llx with %u instructions\n", pc - (uintptr_t)dynarec_base_addr, num_instructions);
 	}
 
 	void CallSVC(std::uint32_t swi) override;
