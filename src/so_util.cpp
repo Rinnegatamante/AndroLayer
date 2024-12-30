@@ -24,6 +24,8 @@
 #include "dynarec.h"
 #include "so_util.h"
 
+std::vector<uintptr_t> native_funcs;
+
 extern uintptr_t __stack_chk_fail;
 static uint64_t __stack_chk_guard_fake = 0x4242424242424242;
 FILE *stderr_fake = (FILE*)0xDEADBEEFDEADBEEF;
@@ -335,7 +337,7 @@ void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry)
 	printf("Run 0x%llx with end_program_token %llx\n", entry - (uintptr_t)text_base, end_program_token);
 	Dynarmic::HaltReason reason = {};
 	while ((reason = jit->Run()) == Dynarmic::HaltReason::UserDefined2) {
-		auto host_next = (void (*)(void *))(((uint64_t)*(uint32_t *)(jit->GetPC() + 4) << 32) | (uint64_t)*(uint32_t *)(jit->GetPC()));
+		auto host_next = (void (*)(void *))(native_funcs[*(uint32_t *)jit->GetPC()]);
 		//printf("host_next 0x%llx\n", host_next);
 		host_next((void*)jit);
 	}

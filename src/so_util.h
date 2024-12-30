@@ -16,11 +16,11 @@
 typedef struct {
 	char *symbol;
 	uintptr_t ptr; /* NULL means using the trampoline instead. */
-	uint32_t trampoline[3];
+	uint32_t trampoline[2];
 } dynarec_import;
 
 typedef struct {
-	uint32_t trampoline[3];
+	uint32_t trampoline[2];
 } dynarec_hook;
 
 extern dynarec_import dynarec_imports[];

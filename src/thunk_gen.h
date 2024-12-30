@@ -7,6 +7,7 @@
 #include <iostream>
 
 extern void *dynarec_base_addr;
+extern std::vector<uintptr_t> native_funcs;
 
 template<typename D, typename R, typename... Args>
 struct ThunkImpl {
@@ -139,19 +140,17 @@ dynarec_import gen_wrapper(const char *symname)
 	T::func = F;
 	T::symname = symname;
 	uintptr_t f = (uintptr_t)T::bridge;
-	uint32_t *f_hilo = reinterpret_cast<uint32_t*>(&f); /* alias the function ptr */
+	native_funcs.push_back(f);
 
 	// Setup the trampoline
 	return (dynarec_import) {
 		.symbol = (char *)symname,
 		.ptr = 0,
 		// The trampoline works by calling an SVC Handler where we then
-		// grab the function pointer from PC, PC + 4
+		// grab the function index from PC
 		.trampoline = {
 			0xD4000021,	// SVC 0x1
-			// PTR:
-			f_hilo[0],
-			f_hilo[1],
+			(uint32_t)(native_funcs.size() - 1),
 		}
 	};
 }
@@ -163,17 +162,15 @@ dynarec_hook gen_trampoline(const char *symname)
 	T::func = F;
 	T::symname = symname;
 	uintptr_t f = (uintptr_t)T::bridge;
-	uint32_t *f_hilo = reinterpret_cast<uint32_t*>(&f); /* alias the function ptr */
+	native_funcs.push_back(f);
 
 	// Setup the trampoline
 	return (dynarec_hook) {
 		// The trampoline works by calling an SVC Handler where we then
-		// grab the function pointer from PC, PC + 4
+		// grab the function index from PC
 		.trampoline = {
 			0xD4000021,	// SVC 0x1
-			// PTR:
-			f_hilo[0],
-			f_hilo[1],
+			(uint32_t)(native_funcs.size() - 1),
 		}
 	};
 }
