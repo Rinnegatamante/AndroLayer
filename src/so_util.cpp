@@ -328,8 +328,6 @@ int so_resolve(dynarec_import *funcs, int num_funcs) {
 	return 0;
 }
 
-extern void *dynarec_base_addr;
-
 void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry)
 {
 	jit->SetRegister(REG_FP, (uintptr_t)end_program_token);
@@ -337,7 +335,7 @@ void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry)
 	printf("Run 0x%llx with end_program_token %llx\n", entry - (uintptr_t)text_base, end_program_token);
 	Dynarmic::HaltReason reason = {};
 	while ((reason = jit->Run()) == Dynarmic::HaltReason::UserDefined2) {
-		auto host_next = (void (*)(void *))jit->GetRegister(16);
+		auto host_next = (void (*)(void *))(((uint64_t)*(uint32_t *)(jit->GetPC() + 4) << 32) | (uint64_t)*(uint32_t *)(jit->GetPC()));
 		//printf("host_next 0x%llx\n", host_next);
 		host_next((void*)jit);
 	}
@@ -455,9 +453,8 @@ std::optional<std::uint32_t> so_env::MemoryReadCode(std::uint64_t vaddr)
 		uintptr_t f1 = parent->GetRegister(16);
 		uintptr_t f2 = parent->GetRegister(17);
 		return 0xD4000001 | (2 << 5);
-	}
 	// found the canary token for returning from top-level function
-	else if (vaddr == (uintptr_t)end_program_token) {
+	} else if (vaddr == (uintptr_t)end_program_token) {
 		printf("vaddr %p: emitting end_program_token\n", vaddr);
 		return 0xD4000001 | (0 << 5);
 	}
@@ -475,7 +472,7 @@ void so_env::CallSVC(std::uint32_t swi)
 	case 1:
 		// Yield from guest for a moment to handle host code requested,
 		// leaving this instance available for nested callbacks and whatnot
-		//printf("Halting for host function execution: %p\n", parent->GetRegister(16));
+		//printf("Halting for host function execution: %p\n", parent->GetPC());
 		parent->HaltExecution(Dynarmic::HaltReason::UserDefined2);
 		break;
 	case 2:

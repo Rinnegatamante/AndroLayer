@@ -145,14 +145,10 @@ dynarec_import gen_wrapper(const char *symname)
 	return (dynarec_import) {
 		.symbol = (char *)symname,
 		.ptr = 0,
-		// The trampoline works by loading the address of our wrapper into X17
-		// and then calling a SVC Handler that takes care of gathering the
-		// arguments from guest and passing them to the host function as needed
-		// injecting the jit context pointer if requested by the wrapped function.
+		// The trampoline works by calling an SVC Handler where we then
+		// grab the function pointer from PC, PC + 4
 		.trampoline = {
-			0x10000071, // ADR X17, PTR
-			0xF9400230,	// LDR X16, [X17]
-			0xD4000021,	// SVC 0x2
+			0xD4000021,	// SVC 0x1
 			// PTR:
 			f_hilo[0],
 			f_hilo[1],
@@ -171,14 +167,10 @@ dynarec_hook gen_trampoline(const char *symname)
 
 	// Setup the trampoline
 	return (dynarec_hook) {
-		// The trampoline works by loading the address of our wrapper into X17
-		// and then calling a SVC Handler that takes care of gathering the
-		// arguments from guest and passing them to the host function as needed
-		// injecting the jit context pointer if requested by the wrapped function.
+		// The trampoline works by calling an SVC Handler where we then
+		// grab the function pointer from PC, PC + 4
 		.trampoline = {
-			0x10000071, // ADR X17, PTR
-			0xF9400230,	// LDR X16, [X17]
-			0xD4000021,	// SVC 0x2
+			0xD4000021,	// SVC 0x1
 			// PTR:
 			f_hilo[0],
 			f_hilo[1],
