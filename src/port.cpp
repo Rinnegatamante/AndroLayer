@@ -24,6 +24,14 @@
 #include <AL/alext.h>
 #include <AL/efx.h>
 
+extern "C" {
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+}
+
 /*
  * Custom imports implementations
  */
@@ -650,6 +658,52 @@ int WriteDataToPrivateStorage(const char *file, const void *data, int size) {
 	return ret;
 }
 
+typedef struct  {
+	uint8_t *buffer;
+	uint32_t offset;
+} tga_write_struct;
+tga_write_struct tga_ctx;
+
+void tga_write_func(void *context, void *data, int size) {
+	tga_write_struct *ctx = (tga_write_struct *)context;
+	memcpy(&ctx->buffer[ctx->offset], data, size);
+	ctx->offset += size;
+}
+
+uint8_t decomp_buffer[1024 * 1024 * 2];
+uintptr_t loadTGA;
+void loadJPG(void *_this, uint8_t *buf, int size) {
+	// Max Payne doesn't support RLE'd TGA files
+	stbi_write_tga_with_rle = 0;
+
+	//printf("loadJPG called with buf: %llx and size: %d\n", buf, size);
+	//FILE *f = fopen("dump.jpg", "wb");
+	//fwrite(buf, 1, size, f);
+	//fclose(f);
+	int w, h;
+	uint8_t *data = stbi_load_from_memory(buf, size, &w, &h, NULL, 4);
+	if (!data) {
+		printf("Failed to load jpg file\n");
+		return 0;
+	}
+	tga_ctx.buffer = decomp_buffer;
+	tga_ctx.offset = 0;
+	stbi_write_tga_to_func(tga_write_func, &tga_ctx, w, h, 4, data);
+	free(data);
+	
+	//f = fopen("dump.tga", "wb");
+	//fwrite(decomp_buffer, 1, tga_ctx.offset, f);
+	//fclose(f);
+	
+	//printf("Running loadTGA\n");
+	so_dynarec->SetRegister(0, _this);
+	so_dynarec->SetRegister(1, (uintptr_t)decomp_buffer);
+	so_dynarec->SetRegister(2, tga_ctx.offset);
+	so_run_fiber(so_dynarec, loadTGA);
+	
+	//printf("Returning from loadJPG\n");
+}
+
 int exec_patch_hooks(void *dynarec_base_addr) {
 	mkdir("./savegames");
 
@@ -669,6 +723,10 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	deviceChip = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("deviceChip"));
 	deviceForm = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("deviceForm"));
 	definedDevice = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("definedDevice"));
+	
+	// FIXME: There is some issue with libjpeg that causes random mem corruptions. For now we do JPEG->TGA conversion natively and load images as TGA
+	HOOK_FUNC("_ZN7G_Image7loadJPGEPci", loadJPG);
+	loadTGA = (uintptr_t)dynarec_base_addr + so_find_addr_rx("_ZN7G_Image7loadTGAEPc");
 	
 	// This hook exists just as a guard to know if we're reaching some code we should patch instead
 	HOOK_FUNC("_Z24NVThreadGetCurrentJNIEnvv", NVThreadGetCurrentJNIEnv);
