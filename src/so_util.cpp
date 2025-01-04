@@ -160,7 +160,7 @@ std::vector<u64> pages;
 bool unmappedMemoryHook(uc_engine* uc, uc_mem_type type, u64 start_address, int size, u64 value, void* user_data) {
 	const auto generate_page = [&](u64 base_address) {
 		uc_err err = uc_mem_map_ptr(uc, base_address, 0x1000, UC_PROT_READ, (void *)base_address);
-        if (err && err != UC_ERR_MAP) {
+		if (err && err != UC_ERR_MAP) {
 			printf("Failed to allocate page for unmapped memory: %u (%s)\n", err, uc_strerror(err));
 			abort();
 			return;
@@ -169,15 +169,15 @@ bool unmappedMemoryHook(uc_engine* uc, uc_mem_type type, u64 start_address, int 
 		pages.emplace_back(base_address);
 	};
 
-    const u64 start_address_page = start_address & ~u64(0xFFF);
-    const u64 end_address = start_address + size - 1;
+	const u64 start_address_page = start_address & ~u64(0xFFF);
+	const u64 end_address = start_address + size - 1;
 
 	//printf("wants to map %llx with size %d\n", start_address, size);
 	u64 current_address = start_address_page;
-    do {
+	do {
 		generate_page(current_address);
-        current_address += 0x1000;
-    } while (current_address < end_address);
+		current_address += 0x1000;
+	} while (current_address < end_address);
 	
 	return true;
 }
@@ -187,7 +187,7 @@ int so_load(const char *filename, void **base_addr) {
 #ifdef USE_INTERPRETER
 	// Set up dynamic memory mapping hooks
 	uc_err err = uc_hook_add(uc, &mem_invalid_hook, UC_HOOK_MEM_INVALID, (void*)unmappedMemoryHook, NULL, 0, ~u64(0));
-    if (err) {
+	if (err) {
 		printf("Failed to setup dynamic memory handler %u (%s)\n", err, uc_strerror(err));
 		return -1;
 	}
