@@ -213,6 +213,13 @@ int gettimeofday_hook(aarch64_timeval *tv, aarch64_timezone *tz) {
 	return ret;
 }
 
+const GLubyte *glGetString_fake(GLenum name) {
+	// The game miscalculates buffer sizes for compressed textures, so we need to fakely report that we support no compressed format
+	if (name == GL_EXTENSIONS)
+		return (const GLubyte *)"";
+	return glGetString(name);
+}
+
 // Some math functions in C++ have different prototypes and makes it messy with WRAP_FUNC, this workarounds the issue
 double acosd(double n) { return acos(n); }
 double cosd(double n) { return cos(n); }
@@ -337,7 +344,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("glGetProgramiv", _glGetProgramiv),
 	WRAP_FUNC("glGetShaderInfoLog", _glGetShaderInfoLog),
 	WRAP_FUNC("glGetShaderiv", _glGetShaderiv),
-	WRAP_FUNC("glGetString", _glGetString),
+	WRAP_FUNC("glGetString", glGetString_fake),
 	WRAP_FUNC("glGetUniformLocation", _glGetUniformLocation),
 	WRAP_FUNC("glHint", _glHint),
 	WRAP_FUNC("glLinkProgram", _glLinkProgram),
@@ -759,11 +766,11 @@ void loadJPG(void *_this, uint8_t *buf, int size) {
 }
 
 int OS_ScreenGetHeight(void) {
-  return WINDOW_WIDTH;
+	return WINDOW_HEIGHT;
 }
 
 int OS_ScreenGetWidth(void) {
-  return WINDOW_HEIGHT;
+	return WINDOW_WIDTH;
 }
 
 int exec_patch_hooks(void *dynarec_base_addr) {
