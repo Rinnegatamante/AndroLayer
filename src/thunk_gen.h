@@ -48,8 +48,8 @@ struct ThunkImpl {
 			if constexpr (std::is_floating_point_v<T>) {
 #ifdef USE_INTERPRETER
 				uint64_t reg_val;
-				uc_reg_read(uc, UC_ARM64_REG_V0 + idx_reg, &reg_val);
-				return *(T*)reg_val;
+				uc_reg_read(uc, UC_ARM64_REG_Q0 + idx_reg, &reg_val);
+				return *(T*)&reg_val;
 #else
 				Dynarmic::A64::Vector reg_val = jit->GetVector(idx_reg);
 				return *(T*)&reg_val;
@@ -124,7 +124,7 @@ struct ThunkImpl {
 				double ret_cast = (double)ret;
 				uint32_t *alias = (uint32_t*)&ret_cast;
 #ifdef USE_INTERPRETER
-				uc_reg_write(uc, UC_ARM64_REG_V0, &ret_cast);
+				uc_reg_write(uc, UC_ARM64_REG_Q0, &ret_cast);
 #else
 				jit->SetVector(0, Dynarmic::A64::Vector{alias[0], alias[1]});
 #endif

@@ -153,13 +153,11 @@ void so_free_temp(void) {
 #ifdef USE_INTERPRETER
 // Hooks to deal with dynamically allocated memory mapping
 uc_hook mem_invalid_hook;
-uc_hook mem_write_prot_hook;
-
 std::vector<u64> pages;
 
 bool unmappedMemoryHook(uc_engine* uc, uc_mem_type type, u64 start_address, int size, u64 value, void* user_data) {
 	const auto generate_page = [&](u64 base_address) {
-		uc_err err = uc_mem_map_ptr(uc, base_address, 0x1000, UC_PROT_READ, (void *)base_address);
+		uc_err err = uc_mem_map_ptr(uc, base_address, 0x1000, UC_PROT_ALL, (void *)base_address);
 		if (err && err != UC_ERR_MAP) {
 			printf("Failed to allocate page for unmapped memory: %u (%s)\n", err, uc_strerror(err));
 			abort();
@@ -476,14 +474,12 @@ int so_resolve(dynarec_import *funcs, int num_funcs) {
 uintptr_t next_pc;
 #endif
 
-void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry)
-{
-	uintptr_t generator = entry;
+void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry) {
 	//printf("Run 0x%llx with end_program_token %llx\n", entry - (uintptr_t)text_base, end_program_token);
 #ifdef USE_INTERPRETER
 	uintptr_t exit_token = (uintptr_t)load_base;
 	uc_reg_write(uc, REG_FP, &exit_token);
-	uc_err err = UC_ERR_EXCEPTION;
+	uc_err err;
 	uintptr_t sp, pc, fp;
 	do {
 		uc_reg_read(uc, REG_FP, &fp);
