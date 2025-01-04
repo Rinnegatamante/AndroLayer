@@ -90,10 +90,8 @@ PROCESS_VAR:
 			token[end_offs - start_offs] = 0;
 			char tmp[1024];
 			bool onStack = false;
-			if (startReg >= 7) {
-				sp -= 8;
+			if (startReg > 7)
 				onStack = true;
-			}
 			uint64_t reg_val;
 			switch (var_type) {
 			case VAR_STRING:
@@ -191,6 +189,8 @@ PROCESS_VAR:
 #endif
 				break;
 			}
+			if (onStack)
+				sp -= 8;
 			//printf("Argument decoded: %s\n", tmp);
 			res.replace(str_offs + start_offs, end_offs - start_offs, tmp);
 			str_offs = res.size() - orig_sz;
@@ -354,10 +354,8 @@ int __aarch64_sscanf(const char *buffer, const char *format) {
 	uintptr_t out_ptrs[MAX_SSCANF_OUTS];
 	bool onStack = false;
 	for (size_t i = 0; i < num_args; i++) {
-		if (startReg >= 7) {
-			sp -= 8;
+		if (startReg > 7)
 			onStack = true;
-		}
 #ifdef USE_INTERPRETER
 		if (!onStack)
 			uc_reg_read(uc, UC_ARM64_REG_X0 + startReg++, &out_ptrs[i]);
@@ -366,6 +364,8 @@ int __aarch64_sscanf(const char *buffer, const char *format) {
 #else
 		out_ptrs[i] = onStack ? *(uintptr_t *)sp : (uintptr_t)so_dynarec->GetRegister(startReg++);
 #endif
+		if (onStack)
+			sp -= 8;
 	}
 
 	switch (num_args) {

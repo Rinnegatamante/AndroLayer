@@ -41,15 +41,22 @@ struct ThunkImpl {
 
 		// If we exausted the available registers, then we have to
 		// fetch the instruction from the stack.
-		if (idx_reg >= 7) {
+		if (idx_reg > 7) {
+			uintptr_t pre_decrement_sp = sp;
 			sp -= 8;
-			return *(T*)sp;
+			return *(T*)pre_decrement_sp;
 		} else {
 			if constexpr (std::is_floating_point_v<T>) {
 #ifdef USE_INTERPRETER
-				uint64_t reg_val;
-				uc_reg_read(uc, UC_ARM64_REG_Q0 + idx_reg, &reg_val);
-				return *(T*)&reg_val;
+				if constexpr (sizeof(T) == 8) {
+					double reg_val;
+					uc_reg_read(uc, UC_ARM64_REG_D0 + idx_reg, (void*)&reg_val);
+					return (T)reg_val;
+				} else {
+					float reg_val;
+					uc_reg_read(uc, UC_ARM64_REG_S0 + idx_reg,(void*) &reg_val);
+					return (T)reg_val;
+				}
 #else
 				Dynarmic::A64::Vector reg_val = jit->GetVector(idx_reg);
 				return *(T*)&reg_val;
@@ -58,7 +65,6 @@ struct ThunkImpl {
 #ifdef USE_INTERPRETER
 				uint64_t reg_val;
 				uc_reg_read(uc, UC_ARM64_REG_X0 + idx_reg, &reg_val);
-				//printf("reg_val %llx on %d\n", reg_val, idx_reg);
 				return (T)reg_val;
 #else
 				return (T)(jit->GetRegister(idx_reg));
@@ -121,11 +127,15 @@ struct ThunkImpl {
 		} else {
 			R ret = BraceCall { get<Args>(reg_cnt, int_reg_cnt, float_reg_cnt, sp, jit)... }.ret;
 			if constexpr (std::is_floating_point_v<R>) {
-				double ret_cast = (double)ret;
-				uint32_t *alias = (uint32_t*)&ret_cast;
+				uint64_t ret_cast;
+				if constexpr (sizeof(R) == 8)
+					ret_cast = *(uint64_t *)&ret;
+				else
+					ret_cast = *(uint32_t *)&ret;
 #ifdef USE_INTERPRETER
-				uc_reg_write(uc, UC_ARM64_REG_Q0, &ret_cast);
+				uc_reg_write(uc, UC_ARM64_REG_D0, &ret_cast);
 #else
+				uint32_t *alias = (uint32_t*)&ret_cast;
 				jit->SetVector(0, Dynarmic::A64::Vector{alias[0], alias[1]});
 #endif
 			} else {
