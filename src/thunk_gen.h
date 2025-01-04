@@ -8,6 +8,10 @@
 
 extern void *dynarec_base_addr;
 extern std::vector<uintptr_t> native_funcs;
+#ifdef USE_INTERPRETER
+extern std::vector<uc_hook> hooks;
+extern uintptr_t next_pc;
+#endif
 
 template<typename D, typename R, typename... Args>
 struct ThunkImpl {
@@ -41,14 +45,38 @@ struct ThunkImpl {
 			return *(T*)sp;
 		} else {
 			if constexpr (std::is_floating_point_v<T>) {
+#ifdef USE_INTERPRETER
+				uint64_t reg_val;
+				uc_reg_read(uc, UC_ARM64_REG_V0 + idx_reg, &reg_val);
+				return *(T*)reg_val;
+#else
 				Dynarmic::A64::Vector reg_val = jit->GetVector(idx_reg);
 				return *(T*)&reg_val;
+#endif
 			} else if constexpr (std::is_pointer_v<T> || std::is_integral_v<T> || std::is_enum_v<T>) {
+#ifdef USE_INTERPRETER
+				uint64_t reg_val;
+				uc_reg_read(uc, UC_ARM64_REG_X0 + idx_reg, &reg_val);
+				return (T)reg_val;
+#else
 				return (T)(jit->GetRegister(idx_reg));
+#endif
 			} else if constexpr (sizeof(T) <= 16) {
+#ifdef USE_INTERPRETER
+				uint64_t reg_val;
+				uc_reg_read(uc, UC_ARM64_REG_X0 + idx_reg, &reg_val);
+				return (T)reg_val;
+#else
 				return (T)(jit->GetRegister(idx_reg));
+#endif
 			} else {
+#ifdef USE_INTERPRETER
+				uint64_t reg_val;
+				uc_reg_read(uc, UC_ARM64_REG_X0 + idx_reg, &reg_val);
+				return *(T*)reg_val;
+#else
 				return *(T*)jit->GetRegister(idx_reg);
+#endif
 			}
 		}
 	}
@@ -67,11 +95,22 @@ struct ThunkImpl {
 	__attribute__((noinline)) static void bridge(Dynarmic::A64::Jit *jit)
 	{
 		// Store the return address of the function
+#ifdef USE_INTERPRETER
+		uintptr_t addr_next;
+		uc_reg_read(uc, REG_FP, &addr_next);
+#else
 		uintptr_t addr_next = jit->GetRegister(REG_FP);
-
+#endif
+		//printf("RA is %llx\n", (uintptr_t)addr_next - (uintptr_t)dynarec_base_addr);
+		
 		// Gather arguments from the guest environment and pass them to the wrapped
 		// function.
+#ifdef USE_INTERPRETER
+		uintptr_t sp;
+		uc_reg_read(uc, UC_ARM64_REG_SP, &sp);
+#else
 		uintptr_t sp = jit->GetSP();
+#endif
 		int float_reg_cnt = 0;
 		int int_reg_cnt = 0;
 		int reg_cnt = 0;
@@ -82,15 +121,27 @@ struct ThunkImpl {
 			if constexpr (std::is_floating_point_v<R>) {
 				double ret_cast = (double)ret;
 				uint32_t *alias = (uint32_t*)&ret_cast;
+#ifdef USE_INTERPRETER
+				uc_reg_write(uc, UC_ARM64_REG_V0, &ret_cast);
+#else
 				jit->SetVector(0, Dynarmic::A64::Vector{alias[0], alias[1]});
-			}
-			else {
+#endif
+			} else {
+#ifdef USE_INTERPRETER
+				uint64_t ret_cast = (uint64_t)ret;
+				uc_reg_write(uc, UC_ARM64_REG_X0, &ret_cast);
+#else
 				jit->SetRegister(0, (uint64_t)ret);
+#endif
 			}
 		}
 		
 		// Jump back to the host :)
+#ifdef USE_INTERPRETER
+		next_pc = addr_next;
+#else
 		jit->SetPC(addr_next);
+#endif
 	}
 };
 
@@ -144,14 +195,21 @@ dynarec_import gen_wrapper(const char *symname)
 
 	// Setup the trampoline
 	return (dynarec_import) {
+#ifdef USE_INTERPRETER
+		.mapped = false,
+#endif
 		.symbol = (char *)symname,
 		.ptr = 0,
 		// The trampoline works by calling an SVC Handler where we then
 		// grab the function index from PC
+#ifdef USE_INTERPRETER
+		.trampoline = (uint32_t)((native_funcs.size() - 1) * 4)
+#else
 		.trampoline = {
 			0xD4000021,	// SVC 0x1
 			(uint32_t)(native_funcs.size() - 1),
 		}
+#endif
 	};
 }
 
@@ -166,11 +224,16 @@ dynarec_hook gen_trampoline(const char *symname)
 
 	// Setup the trampoline
 	return (dynarec_hook) {
+#ifdef USE_INTERPRETER
+		.mapped = false,
+		.trampoline = (uint32_t)((native_funcs.size() - 1) * 4)
+#else
 		// The trampoline works by calling an SVC Handler where we then
 		// grab the function index from PC
 		.trampoline = {
 			0xD4000021,	// SVC 0x1
 			(uint32_t)(native_funcs.size() - 1),
 		}
+#endif
 	};
 }

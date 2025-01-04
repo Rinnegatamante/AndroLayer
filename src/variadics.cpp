@@ -60,7 +60,12 @@ extern FILE *stderr_fake;
 		}
 
 std::string parse_format(const char *format, int startReg) {
+#ifdef USE_INTERPRETER
+	uintptr_t sp;
+	uc_reg_read(uc, UC_ARM64_REG_SP, &sp);
+#else
 	uintptr_t sp = so_dynarec->GetSP();
+#endif
 	std::string res = format;
 	size_t orig_sz = res.size();
 	int str_offs = 0;
@@ -89,21 +94,46 @@ PROCESS_VAR:
 				sp -= 8;
 				onStack = true;
 			}
+			uint64_t reg_val;
 			switch (var_type) {
 			case VAR_STRING:
+#ifdef USE_INTERPRETER
+				if (!onStack)
+					uc_reg_read(uc, UC_ARM64_REG_X0 + startReg++, &reg_val);
+				sprintf(tmp, token, onStack ? *(char **)sp : (char *)reg_val);
+#else
 				sprintf(tmp, token, onStack ? *(char **)sp : (char *)so_dynarec->GetRegister(startReg++));
+#endif
 				break;
 			case VAR_SIGNED_INTEGER:
 				switch (var_size) {
 				case VAR_SHORT_SHORT:
+#ifdef USE_INTERPRETER
+					if (!onStack)
+						uc_reg_read(uc, UC_ARM64_REG_X0 + startReg++, &reg_val);
+					sprintf(tmp, token, onStack ? *(int8_t*)sp : (int8_t)reg_val);
+#else
 					sprintf(tmp, token, onStack ? *(int8_t*)sp : (int8_t)so_dynarec->GetRegister(startReg++));
+#endif
 					break;
 				case VAR_SHORT:
+#ifdef USE_INTERPRETER
+					if (!onStack)
+						uc_reg_read(uc, UC_ARM64_REG_X0 + startReg++, &reg_val);
+					sprintf(tmp, token, onStack ? *(int16_t*)sp : (int16_t)reg_val);
+#else
 					sprintf(tmp, token, onStack ? *(int16_t*)sp : (int16_t)so_dynarec->GetRegister(startReg++));
+#endif					
 					break;
 				case VAR_DEFAULT:
 				case VAR_LONG:
+#ifdef USE_INTERPRETER
+					if (!onStack)
+						uc_reg_read(uc, UC_ARM64_REG_X0 + startReg++, &reg_val);
+					sprintf(tmp, token, onStack ? *(int32_t*)sp : (int32_t)reg_val);
+#else
 					sprintf(tmp, token, onStack ? *(int32_t*)sp : (int32_t)so_dynarec->GetRegister(startReg++));
+#endif					
 					break;
 				case VAR_LONG_LONG:
 					sprintf(tmp, token, onStack ? *(int64_t*)sp : (int64_t)so_dynarec->GetRegister(startReg++));
@@ -113,22 +143,52 @@ PROCESS_VAR:
 			case VAR_UNSIGNED_INTEGER:
 				switch (var_size) {
 				case VAR_SHORT_SHORT:
+#ifdef USE_INTERPRETER
+					if (!onStack)
+						uc_reg_read(uc, UC_ARM64_REG_X0 + startReg++, &reg_val);
+					sprintf(tmp, token, onStack ? *(uint8_t*)sp : (uint8_t)reg_val);
+#else
 					sprintf(tmp, token, onStack ? *(uint8_t*)sp : (uint8_t)so_dynarec->GetRegister(startReg++));
+#endif					
 					break;
 				case VAR_SHORT:
+#ifdef USE_INTERPRETER
+					if (!onStack)
+						uc_reg_read(uc, UC_ARM64_REG_X0 + startReg++, &reg_val);
+					sprintf(tmp, token, onStack ? *(uint16_t*)sp : (uint16_t)reg_val);
+#else
 					sprintf(tmp, token, onStack ? *(uint16_t*)sp : (uint16_t)so_dynarec->GetRegister(startReg++));
+#endif					
 					break;
 				case VAR_DEFAULT:
 				case VAR_LONG:
+#ifdef USE_INTERPRETER
+					if (!onStack)
+						uc_reg_read(uc, UC_ARM64_REG_X0 + startReg++, &reg_val);
+					sprintf(tmp, token, onStack ? *(uint32_t*)sp : (uint32_t)reg_val);
+#else
 					sprintf(tmp, token, onStack ? *(uint32_t*)sp : (uint32_t)so_dynarec->GetRegister(startReg++));
+#endif					
 					break;
 				case VAR_LONG_LONG:
+#ifdef USE_INTERPRETER
+					if (!onStack)
+						uc_reg_read(uc, UC_ARM64_REG_X0 + startReg++, &reg_val);
+					sprintf(tmp, token, onStack ? *(uint64_t*)sp : (uint64_t)reg_val);
+#else
 					sprintf(tmp, token, onStack ? *(uint64_t*)sp : (uint64_t)so_dynarec->GetRegister(startReg++));
+#endif						
 					break;
 				}
 				break;
 			case VAR_FLOAT:
+#ifdef USE_INTERPRETER
+				if (!onStack)
+					uc_reg_read(uc, UC_ARM64_REG_X0 + startReg++, &reg_val);
+				sprintf(tmp, token, onStack ? *(double*)sp : (double)reg_val);
+#else
 				sprintf(tmp, token, onStack ? *(double*)sp : (double)so_dynarec->GetRegister(startReg++));
+#endif
 				break;
 			}
 			//printf("Argument decoded: %s\n", tmp);
@@ -284,7 +344,12 @@ int __aarch64_printf(const char *format) {
 
 int __aarch64_sscanf(const char *buffer, const char *format) {
 	size_t num_args = count_args(format);
+#ifdef USE_INTERPRETER
+	uintptr_t sp;
+	uc_reg_read(uc, UC_ARM64_REG_SP, &sp);
+#else
 	uintptr_t sp = so_dynarec->GetSP();
+#endif
 	int startReg = 2;
 	uintptr_t out_ptrs[MAX_SSCANF_OUTS];
 	bool onStack = false;
@@ -293,7 +358,14 @@ int __aarch64_sscanf(const char *buffer, const char *format) {
 			sp -= 8;
 			onStack = true;
 		}
+#ifdef USE_INTERPRETER
+		if (!onStack)
+			uc_reg_read(uc, UC_ARM64_REG_X0 + startReg++, &out_ptrs[i]);
+		else
+			out_ptrs[i] = *(uintptr_t *)sp;
+#else
 		out_ptrs[i] = onStack ? *(uintptr_t *)sp : (uintptr_t)so_dynarec->GetRegister(startReg++);
+#endif
 	}
 
 	switch (num_args) {

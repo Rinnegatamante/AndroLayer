@@ -13,7 +13,16 @@ OBJS = \
 	main.o \
 	glad/glad.o
 
-CXXFLAGS = -O3 -fpermissive -g -std=c++20
+CXXFLAGS = -O3 -fpermissive -g -std=c++20 
+
+ifeq ($(NO_DEBUG),1)
+CXXFLAGS += -DNDEBUG
+endif
+
+ifeq ($(USE_INTERPRETER),1)
+LIBS += -lunicorn
+CXXFLAGS += -DUSE_INTERPRETER
+endif
 
 CXX = g++
 CC = gcc

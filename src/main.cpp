@@ -9,6 +9,10 @@
 #include "so_util.h"
 #include "port.h"
 
+#ifdef USE_INTERPRETER
+#include "interpreter.h"
+#endif
+
 GLFWwindow *glfw_window = nullptr;
 void *dynarec_base_addr = nullptr;
 
@@ -77,10 +81,29 @@ int main(int argc, char** argv) {
 	return 0;
 }*/
 
-uint64_t tpidr_el0[0x40];
-
-void setupDynarec() {
-	memset(tpidr_el0, 0, sizeof(uint64_t) * 0x40);
+int setupDynarec() {
+	so_stack = (uint8_t *)memalign(0x1000, DYNAREC_STACK_SIZE);
+	tpidr_el0 = (uint8_t *)memalign(0x1000, DYNAREC_TPIDR_SIZE);
+	memset(tpidr_el0, 0, DYNAREC_TPIDR_SIZE);
+	memset(so_stack, 0, 8 * 1024 * 1024);
+#ifdef USE_INTERPRETER
+	uc_err err = uc_open(UC_ARCH_ARM64, UC_MODE_ARM, &uc);
+	if (err) {
+		printf("Failed to setup interpreter with error returned: %u (%s)\n", err, uc_strerror(err));
+		return -1;
+	}
+	err = uc_mem_map_ptr(uc, (uintptr_t)so_stack, DYNAREC_STACK_SIZE, UC_PROT_ALL, so_stack);
+	if (err) {
+		printf("Failed to map stack with error returned: %u (%s)\n", err, uc_strerror(err));
+		return -1;
+	}
+	// FIXME: If we set SP to start of stack, we read out of bounds with Unicorn :/
+	uintptr_t sp = (uintptr_t)so_stack + DYNAREC_STACK_SIZE / 2;
+	uintptr_t tpidr_el0_ptr = (uintptr_t)tpidr_el0_ptr;
+	uc_reg_write(uc, UC_ARM64_REG_SP, &sp);
+	uc_reg_write(uc, UC_ARM64_REG_TPIDR_EL0, &tpidr_el0_ptr);
+	uc_reg_write(uc, UC_ARM64_REG_TPIDRRO_EL0, &tpidr_el0_ptr);
+#else
 	so_monitor = new Dynarmic::ExclusiveMonitor(1);
 	so_dynarec_cfg.fastmem_pointer = (uintptr_t)nullptr;
 	so_dynarec_cfg.enable_cycle_counting = false;
@@ -90,8 +113,10 @@ void setupDynarec() {
 	so_dynarec_cfg.tpidr_el0 = (uint64_t *)tpidr_el0;
 	so_dynarec = new Dynarmic::A64::Jit(so_dynarec_cfg);
 	printf("AARCH64 dynarec inited with address: 0x%llx and TPIDR EL0 pointing at: 0x%llx\n", so_dynarec, tpidr_el0);
-	so_dynarec->SetSP((uintptr_t)&so_stack[sizeof(so_stack)]);
+	so_dynarec->SetSP((uintptr_t)so_stack + DYNAREC_STACK_SIZE / 2);
 	so_dynarec_env.parent = so_dynarec;
+#endif
+	return 0;
 }
 
 int main() {
@@ -104,7 +129,10 @@ int main() {
 	
 	// Setup dynarec
 	printf("Setting up dynarec...\n");
-	setupDynarec();
+	if (setupDynarec()) {
+		printf("Failed to init dynarec\n");
+		return -1;
+	}
 	
 	// Entering game folder
 	chdir("./gamefiles");

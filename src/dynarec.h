@@ -11,17 +11,23 @@
 #include "dynarmic/interface/exclusive_monitor.h"
 
 #define DYNAREC_MEMBLK_SIZE (32 * 1024 * 1024)
+#define DYNAREC_STACK_SIZE (8 * 1024 * 1024)
+#define DYNAREC_TPIDR_SIZE (4096)
 
+#ifdef USE_INTERPRETER
+#include "interpreter.h"
+#define REG_FP UC_ARM64_REG_X30 // Frame Pointer register
+#else
 #define REG_FP (30) // Frame Pointer register
-#define REG_LR (31) // Loader register
+#endif
 
 #define TPIDR_EL0_HACK // Looks like Dynarmic has some issue handling MRS/MSR properly with TPIDR register, this workarounds the issue
 
 extern Dynarmic::A64::Jit *so_dynarec;
 extern Dynarmic::A64::UserConfig so_dynarec_cfg;
 extern Dynarmic::ExclusiveMonitor *so_monitor;
-extern uint8_t so_stack[1024 * 1024 * 8];
-extern uint64_t tpidr_el0[0x40];
+extern uint8_t *so_stack;
+extern uint8_t *tpidr_el0;
 extern void *dynarec_base_addr;
 
 class so_env final : public Dynarmic::A64::UserCallbacks {
@@ -68,6 +74,30 @@ public:
 		if ((uintptr_t)memory + vaddr < 0x1000)
 			vaddr += (uintptr_t)tpidr_el0;
 #endif
+		if (vaddr < 0x1000000) {
+			for (int i = 0; i < 32; i++) {
+				printf("X%d: %llx\n", i, so_dynarec->GetRegister(i));
+			}
+			printf("PC: %llx\n", (uintptr_t)so_dynarec->GetPC() - (uintptr_t)dynarec_base_addr);
+			printf("SP: %llx\n", so_dynarec->GetSP());
+			printf("RA: %llx\n", (uintptr_t)so_dynarec->GetRegister(REG_FP) - (uintptr_t)dynarec_base_addr);
+			printf("vaddr: %llx\n", vaddr);
+			printf("text_base: %llx\n", dynarec_base_addr);
+			printf("stack_base: %llx\n", so_stack);
+			
+			printf("instruction: %x\n", *(uint32_t *)so_dynarec->GetPC());
+			
+			if (*(uint32_t *)so_dynarec->GetPC() == 0xd10043ff) {
+				so_dynarec->SetPC(so_dynarec->GetPC() + 4);
+				so_dynarec->SetSP(so_dynarec->GetSP() - 0x10);
+				abort();
+			}
+			else
+			{
+				printf("dafuq?\n");
+			}
+			abort();
+		}
 		return *(std::uint64_t *)(memory + vaddr);
 	}
 	
@@ -125,7 +155,36 @@ public:
 	}
 
 	void InterpreterFallback(std::uint64_t pc, size_t num_instructions) override {
-		printf("Interpreter fallback: 0x%llx with %u instructions\n", pc - (uintptr_t)dynarec_base_addr, num_instructions);
+		uint64_t old_pc = so_dynarec->GetPC() + 4;
+		so_dynarec->SetRegister(REG_FP, so_dynarec->GetPC() + 4);
+		//printf("BLR on %llx. Setting X30 to %llx and PC to %llx (taken from X%d)\n",
+		//	pc - (uintptr_t)dynarec_base_addr,
+		//	pc - (uintptr_t)dynarec_base_addr + 4,
+		//	so_dynarec->GetRegister(((*(uint32_t *)so_dynarec->GetPC()) << 21) >> 26) - (uintptr_t)dynarec_base_addr,
+		//	((*(uint32_t *)so_dynarec->GetPC()) << 21) >> 26);
+		//printf("INSTRUCTION ON NEW PC: %x\n", *(uint32_t *)(so_dynarec->GetRegister(((*(uint32_t *)so_dynarec->GetPC()) << 21) >> 26)));
+		//fflush(stdout);
+		so_dynarec->SetPC(so_dynarec->GetRegister(((*(uint32_t *)so_dynarec->GetPC()) << 21) >> 26));
+		//if (*(uint32_t *)so_dynarec->GetPC() == 0x91024000) {
+		//	auto disasm = so_dynarec->Disassemble();
+		//	for (int i = 0; i < 1024; i++) {
+		//		printf("%s\n", disasm[i].c_str());
+		//	}
+		//}
+		/*if (*(uint32_t *)so_dynarec->GetPC() == 0x91024000) {
+			so_dynarec->SetRegister(0, so_dynarec->GetRegister(0) + 0x90);
+			so_dynarec->SetPC(so_dynarec->GetPC() + 4);
+			
+			uint32_t b_instr = *(uint32_t *)so_dynarec->GetPC();
+			if (b_instr >> 31) {
+				so_dynarec->SetRegister(REG_FP, so_dynarec->GetPC() + 4);
+			}
+			uint32_t next_addr = ((b_instr << 6) >> 6);
+			printf("next_addr %llx\n", (so_dynarec->GetPC() + next_addr) - (uintptr_t)dynarec_base_addr);
+			so_dynarec->SetPC((uintptr_t)dynarec_base_addr + 0x9924f0);
+			so_dynarec->SetSP(so_dynarec->GetSP() - 0x10);
+			so_dynarec->SetPC(so_dynarec->GetPC() + 4);
+		}*/
 	}
 
 	void CallSVC(std::uint32_t swi) override;

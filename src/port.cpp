@@ -380,7 +380,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("readdir", readdir),
 	WRAP_FUNC("realloc", realloc),
 	WRAP_FUNC("remove", remove),
-	WRAP_FUNC("setjmp", ret0),
+	//WRAP_FUNC("setjmp", ret0),
 	WRAP_FUNC("sin", sind),
 	WRAP_FUNC("sinf", sinf),
 	WRAP_FUNC("snprintf", __aarch64_snprintf),
@@ -439,6 +439,12 @@ size_t dynarec_imports_num = sizeof(dynarec_imports) / sizeof(*dynarec_imports);
  * All the game specific code that needs to be executed right after executable is loaded in mem must be put here
  */
 int exec_booting_sequence(void *dynarec_base_addr) {
+	int numRASFiles = *(int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("numRASFiles"));
+	if (numRASFiles != 6) {
+		printf("numRASFiles is not 6, is %d (addr %llx)!\n", numRASFiles, so_find_addr_rx("numRASFiles"));
+		abort();
+	}
+	
 	glClearColor(0, 1, 0, 0);
 	
 	uintptr_t initGraphics = (uintptr_t)so_find_addr_rx("_Z12initGraphicsv"); // void -> uint64_t
@@ -462,12 +468,22 @@ int exec_booting_sequence(void *dynarec_base_addr) {
 	so_run_fiber(so_dynarec, (uintptr_t)dynarec_base_addr + initGraphics);
 	
 	printf("Executing ShowJoystick...\n");
+#ifdef USE_INTERPRETER
+	uint64_t zero = 0;
+	uc_reg_write(uc, UC_ARM64_REG_X0, &zero);
+#else
 	so_dynarec->SetRegister(0, 0); // Set first arg of ShowJoystick function call to 0
+#endif
 	so_run_fiber(so_dynarec, (uintptr_t)dynarec_base_addr + ShowJoystick);
 	
 	printf("Executing NVEventAppMain...\n");
+#ifdef USE_INTERPRETER
+	uc_reg_write(uc, UC_ARM64_REG_X0, &zero);
+	uc_reg_write(uc, UC_ARM64_REG_X1, &zero);
+#else
 	so_dynarec->SetRegister(0, 0);
 	so_dynarec->SetRegister(1, 0);
+#endif
 	so_run_fiber(so_dynarec, (uintptr_t)dynarec_base_addr + NVEventAppMain);
 	
 	return 0;
@@ -550,7 +566,12 @@ ALCcontext *alcCreateContext_hook(ALCdevice *dev, const ALCint *unused) {
 }
 
 int NVThreadGetCurrentJNIEnv() {
+#ifdef USE_INTERPRETER
+	uintptr_t addr_next;
+	uc_reg_read(uc, REG_FP, &addr_next);
+#else
 	uintptr_t addr_next = so_dynarec->GetRegister(REG_FP);
+#endif
 	printf("GetCurrentJNIENv called from %x\n", (uintptr_t)addr_next - (uintptr_t)dynarec_base_addr);
 
 	return 0x1337;
@@ -684,7 +705,7 @@ void loadJPG(void *_this, uint8_t *buf, int size) {
 	uint8_t *data = stbi_load_from_memory(buf, size, &w, &h, NULL, 4);
 	if (!data) {
 		printf("Failed to load jpg file\n");
-		return 0;
+		return;
 	}
 	tga_ctx.buffer = decomp_buffer;
 	tga_ctx.offset = 0;
@@ -696,7 +717,7 @@ void loadJPG(void *_this, uint8_t *buf, int size) {
 	//fclose(f);
 	
 	//printf("Running loadTGA\n");
-	so_dynarec->SetRegister(0, _this);
+	so_dynarec->SetRegister(0, (uintptr_t)_this);
 	so_dynarec->SetRegister(1, (uintptr_t)decomp_buffer);
 	so_dynarec->SetRegister(2, tga_ctx.offset);
 	so_run_fiber(so_dynarec, loadTGA);

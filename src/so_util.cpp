@@ -8,14 +8,6 @@
 
 
 #include <stdlib.h>
-#ifdef __MINGW64__
-#include <intrin.h>
-#include <malloc.h>
-#include <windows.h>
-#define memalign(x, y) _aligned_malloc(y, x)
-#else
-#include <malloc.h>
-#endif
 #include <stdio.h>
 #include <string.h>
 #include <map>
@@ -23,6 +15,14 @@
 #include "elf.h"
 #include "dynarec.h"
 #include "so_util.h"
+
+#ifdef USE_INTERPRETER
+#include "interpreter.h"
+uc_engine *uc;
+std::vector<uc_hook> hooks;
+#define HOOKS_BASE_ADDRESS ((uintptr_t)load_base + load_size)
+#define HOOKS_BLOCK_SIZE (65536)
+#endif
 
 std::vector<uintptr_t> native_funcs;
 
@@ -78,7 +78,8 @@ so_env so_dynarec_env;
 Dynarmic::A64::Jit *so_dynarec = nullptr;
 Dynarmic::ExclusiveMonitor *so_monitor = nullptr;
 Dynarmic::A64::UserConfig so_dynarec_cfg;
-uint8_t so_stack[1024 * 1024 * 8];
+uint8_t *so_stack;
+uint8_t *tpidr_el0;
 
 void *text_base;
 void *aligned_text_base;
@@ -105,14 +106,32 @@ static char *dynstrtab;
 void end_program_token() { }
 void unresolved_stub_token() { }
 
+#ifdef USE_INTERPRETER
+static void hook_import(uc_engine *uc, uint64_t address, uint32_t size, void *user_data) {
+	address -= HOOKS_BASE_ADDRESS;
+	printf(">>> Import called %llx\n", address / 4);
+	uc_emu_stop(uc);
+	auto host_next = (void (*)(void *))(native_funcs[address / 4]);
+	printf("host_next 0x%llx\n", host_next);
+	host_next((void*)so_dynarec);
+}
+#endif
+
 void hook_arm64(uintptr_t addr, dynarec_hook *dst) {
+#ifdef USE_INTERPRETER
+	auto hook = hooks.emplace_back();
+	uc_hook_add(uc, &hook, UC_HOOK_CODE, (void *)hook_import, NULL, HOOKS_BASE_ADDRESS + (uintptr_t)dst->trampoline, HOOKS_BASE_ADDRESS + (uintptr_t)dst->trampoline);
+#else
 	if (addr == 0)
 		return;
 	memcpy((void *)addr, (void *)dst->trampoline, sizeof(uint32_t) * 5);
+#endif
 }
 
 void so_flush_caches(void) {
-	so_dynarec->InvalidateCacheRange((uint64_t)load_base, load_size);
+#ifndef USE_INTERPRETER
+	so_dynarec->InvalidateCacheRange((uintptr_t)load_base, load_size);
+#endif
 }
 
 void so_free_temp(void) {
@@ -120,7 +139,55 @@ void so_free_temp(void) {
 	so_base = NULL;
 }
 
+#ifdef USE_INTERPRETER
+// Hooks to deal with dynamically allocated memory mapping
+uc_hook mem_invalid_hook;
+uc_hook mem_write_prot_hook;
+
+std::vector<u64> pages;
+
+bool unmappedMemoryHook(uc_engine* uc, uc_mem_type /*type*/, u64 start_address, int size, u64 /*value*/, void* user_data) {
+	const auto generate_page = [&](u64 base_address) {
+		//printf("map %llx\n", base_address);
+		uc_err err = uc_mem_map_ptr(uc, base_address, 0x1000, UC_PROT_ALL, base_address);
+        if (err) {
+			printf("Failed to allocate page for unmapped memory: %u (%s)\n", err, uc_strerror(err));
+			abort();
+			return;
+		}
+
+		pages.emplace_back(base_address);
+	};
+
+    const auto is_in_range = [](u64 addr, u64 start, u64 end) {
+        if (start <= end)
+            return addr >= start && addr <= end;  // fffff[tttttt]fffff
+        return addr >= start || addr <= end;      // ttttt]ffffff[ttttt
+    };
+
+    const u64 start_address_page = start_address & ~uint64_t(0xFFF);
+    const u64 end_address = start_address + size - 1;
+
+	//printf("wants to map %llx with size %d\n", start_address, size);
+	u64 current_address = start_address_page;
+    do {
+		generate_page(current_address);
+        current_address += 0x1000;
+    } while (current_address < end_address);
+	
+	return true;
+}
+#endif
+
 int so_load(const char *filename, void **base_addr) {
+#ifdef USE_INTERPRETER
+	// Set up dynamic memory mapping hooks
+	uc_err err = uc_hook_add(uc, &mem_invalid_hook, UC_HOOK_MEM_INVALID, (void*)unmappedMemoryHook, NULL, 0, ~uint64_t(0));
+    if (err) {
+		printf("Failed to setup dynamic memory handler %u (%s)\n", err, uc_strerror(err));
+		return -1;
+	}
+#endif
 	int res = 0;
 	size_t so_size = 0;
 	int text_segno = -1;
@@ -172,7 +239,7 @@ int so_load(const char *filename, void **base_addr) {
 	}
 
 	// align total size to page size
-	load_size = ALIGN_MEM(load_size, 0x10000);
+	load_size = ALIGN_MEM(load_size, 0x1000);
 	if (load_size > DYNAREC_MEMBLK_SIZE) {
 		res = -3;
 		goto err_free_so;
@@ -181,10 +248,24 @@ int so_load(const char *filename, void **base_addr) {
 
 	// allocate space for all load segments (align to page size)
 	printf("Allocating dynarec memblock of %llu bytes\n", load_size);
-	load_base = memalign(0x10000, load_size);
+	load_base = memalign(0x1000, load_size);
 	if (!load_base)
 		goto err_free_so;
 	memset(load_base, 0, load_size);
+
+#ifdef USE_INTERPRETER
+	err = uc_mem_map_ptr(uc, (uintptr_t)load_base, load_size, UC_PROT_ALL, load_base);
+	if (err) {
+		printf("Failed to map ELF memory %u (%s)\n", err, uc_strerror(err));
+		return -1;
+	}
+
+	err = uc_mem_map(uc, (uintptr_t)HOOKS_BASE_ADDRESS, HOOKS_BLOCK_SIZE, UC_PROT_ALL);
+	if (err) {
+		printf("Failed to allocate region for function hooks\n");
+		return -1;
+	}
+#endif
 	
 	// copy segments to where they belong
 
@@ -234,32 +315,89 @@ err_free_so:
 	return res;
 }
 
+#ifdef USE_INTERPRETER
+static void unresolved_symbol_hook(uc_engine *uc, uint64_t address, uint32_t size, void *user_data)
+{
+	uint64_t ra;
+	uc_reg_read(uc, REG_FP, &ra);
+	printf("Unresolved symbol called from %llx\n", ra - (uintptr_t)dynarec_base_addr);
+	abort();
+}
+#endif
+
+
 uintptr_t get_trampoline(const char *name, dynarec_import *funcs, int num_funcs)
 {
+#ifdef USE_INTERPRETER
+	static bool unresolved_symbol_mapped = false;
+	if (!unresolved_symbol_mapped) {
+		unresolved_symbol_mapped = true;
+		auto hook = hooks.emplace_back();
+		uc_hook_add(uc, &hook, UC_HOOK_CODE, (void *)unresolved_symbol_hook, NULL, HOOKS_BASE_ADDRESS + HOOKS_BLOCK_SIZE - 4, HOOKS_BASE_ADDRESS + HOOKS_BLOCK_SIZE - 4);
+	}
+#endif
+
 	for (int k = 0; k < num_funcs; k++) {
 		if (strcmp(name, funcs[k].symbol) == 0) {
-			if (funcs[k].ptr == (uintptr_t)NULL)
+			if (funcs[k].ptr == (uintptr_t)NULL) {
+#ifdef USE_INTERPRETER
+				if (!funcs[k].mapped) {
+					uint32_t nop = 0xD503201F;
+					auto hook = hooks.emplace_back();
+					printf("%s %llx hook on %llx\n", name, (uintptr_t)funcs[k].trampoline / 4, HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline - (uintptr_t)load_base);
+					uc_hook_add(uc, &hook, UC_HOOK_CODE, (void *)hook_import, NULL, HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline, HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline);
+					uc_mem_write(uc, HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline, &nop, 4);
+					funcs[k].mapped = true;
+				}
+				return HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline;
+#else
 				return (uintptr_t)funcs[k].trampoline;
-			else
+#endif
+			} else {	
 				return (uintptr_t)funcs[k].symbol;
+			}
 		}
 	}
 	
 	// Redirect _ctype_ to BIONIC variant
 	if (strcmp(name, "_ctype_") == 0) {
+#ifdef USE_INTERPRETER
+		uc_mem_write(uc, HOOKS_BASE_ADDRESS + (HOOKS_BLOCK_SIZE - 0x1000), __BIONIC_ctype_, sizeof(__BIONIC_ctype_) * sizeof(*__BIONIC_ctype_));
+		return HOOKS_BASE_ADDRESS + (HOOKS_BLOCK_SIZE - 0x1000);
+#else
 		return (uintptr_t)__BIONIC_ctype_;
+#endif
 	// Redirect stack guard related pointers
 	} else if (strcmp(name, "__stack_chk_guard") == 0) {
+#ifdef USE_INTERPRETER
+		uc_mem_write(uc, HOOKS_BASE_ADDRESS + (HOOKS_BLOCK_SIZE - 0x1000 - 8), &__stack_chk_guard_fake, 8);
+		return HOOKS_BASE_ADDRESS + (HOOKS_BLOCK_SIZE - 0x1000 - 8);
+#else
 		return (uintptr_t)&__stack_chk_guard_fake;
+#endif
 	} else if (strcmp(name, "__stack_chk_fail") == 0) {
+#ifdef USE_INTERPRETER
+		uc_mem_write(uc, HOOKS_BASE_ADDRESS + (HOOKS_BLOCK_SIZE - 0x1000 - 16), &__stack_chk_fail, 8);
+		return HOOKS_BASE_ADDRESS + (HOOKS_BLOCK_SIZE - 0x1000 - 16);
+#else
 		return __stack_chk_fail;
+#endif
 	// Redirect stderr to fake one so that we can intercept it in __aarch64_fprintf
 	} else if (strcmp(name, "stderr") == 0) {
+#ifdef USE_INTERPRETER
+		uc_mem_write(uc, HOOKS_BASE_ADDRESS + (HOOKS_BLOCK_SIZE - 0x1000 - 24), &stderr_fake, 8);
+		return HOOKS_BASE_ADDRESS + (HOOKS_BLOCK_SIZE - 0x1000 - 24);
+#else
 		return (uintptr_t)&stderr_fake;
+#endif
 	}
 	
 	printf("Unresolved import: %s\n", name);
+#ifdef USE_INTERPRETER
+	return (uintptr_t)HOOKS_BASE_ADDRESS + HOOKS_BLOCK_SIZE - 4;
+#else
 	return (uintptr_t)unresolved_stub_token;
+#endif
 }
 
 int so_relocate() {
@@ -330,11 +468,51 @@ int so_resolve(dynarec_import *funcs, int num_funcs) {
 	return 0;
 }
 
+#ifdef USE_INTERPRETER
+uintptr_t next_pc;
+#endif
+
 void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry)
 {
+	uintptr_t generator = entry;
+	printf("Run 0x%llx with end_program_token %llx\n", entry - (uintptr_t)text_base, end_program_token);
+	printf("exit_token %llx\n", load_base);
+#ifdef USE_INTERPRETER
+	uintptr_t exit_token = (uintptr_t)load_base;
+	uc_reg_write(uc, REG_FP, load_base);
+	uc_err err = UC_ERR_EXCEPTION;
+	uintptr_t sp, pc, fp;
+	do {
+		uc_reg_read(uc, UC_ARM64_REG_X30, &fp);
+		printf("Run 0x%llx with FP: %llx\n", entry - (uintptr_t)text_base, fp);
+		err = uc_emu_start(uc, entry, exit_token, 0, 0);
+		if (!err) {
+			uc_reg_read(uc, UC_ARM64_REG_PC, &pc);
+			uc_reg_read(uc, UC_ARM64_REG_X30, &fp);
+			//if (pc == end_program_token)
+			//	break;
+		}
+		entry = next_pc;
+	} while (!err || err == UC_ERR_EXCEPTION);
+	if (err) {
+		uc_reg_read(uc, UC_ARM64_REG_SP, &sp);
+		uc_reg_read(uc, UC_ARM64_REG_PC, &pc);
+		uc_reg_read(uc, UC_ARM64_REG_X30, &fp);
+		if (pc == fp)
+			return;
+		printf("Fatal error in Unicorn: %u %s on PC: %llx, SP: %llx, FP: %llx\n", err, uc_strerror(err), pc - (uintptr_t)load_base, sp, fp - (uintptr_t)load_base);
+		std::abort();
+	}
+	else
+	{
+		uc_reg_read(uc, UC_ARM64_REG_SP, &sp);
+		uc_reg_read(uc, UC_ARM64_REG_PC, &pc);
+		uc_reg_read(uc, UC_ARM64_REG_X30, &fp);
+		printf("Exited: %u %s on PC: %llx, SP: %llx, FP: %llx\n", err, uc_strerror(err), pc - (uintptr_t)load_base, sp, fp - (uintptr_t)load_base);
+	}
+#else
 	jit->SetRegister(REG_FP, (uintptr_t)end_program_token);
 	jit->SetPC(entry);
-	printf("Run 0x%llx with end_program_token %llx\n", entry - (uintptr_t)text_base, end_program_token);
 	Dynarmic::HaltReason reason = {};
 	while ((reason = jit->Run()) == Dynarmic::HaltReason::UserDefined2) {
 		auto host_next = (void (*)(void *))(native_funcs[*(uint32_t *)jit->GetPC()]);
@@ -345,6 +523,7 @@ void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry)
 		printf("fiber: Execution ended with failure.\n");
 		std::abort();
 	}
+#endif
 }
 
 void so_execute_init_array(void) {

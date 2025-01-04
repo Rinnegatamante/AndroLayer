@@ -9,18 +9,39 @@
 #ifndef __SO_UTIL_H__
 #define __SO_UTIL_H__
 
+#ifdef __MINGW64__
+#include <intrin.h>
+#include <malloc.h>
+#include <windows.h>
+#define memalign(x, y) _aligned_malloc(y, x)
+#else
+#include <malloc.h>
+#endif
+
 #include <stdint.h>
 
 #define ALIGN_MEM(x, align) (((x) + ((align) - 1)) & ~((align) - 1))
 
 typedef struct {
+#ifdef USE_INTERPRETER
+	bool mapped;
+#endif
 	char *symbol;
 	uintptr_t ptr; /* NULL means using the trampoline instead. */
+#ifdef USE_INTERPRETER
+	uint32_t trampoline;
+#else
 	uint32_t trampoline[2];
+#endif
 } dynarec_import;
 
 typedef struct {
+#ifdef USE_INTERPRETER
+	bool mapped;
+	uint32_t trampoline;
+#else
 	uint32_t trampoline[2];
+#endif
 } dynarec_hook;
 
 extern dynarec_import dynarec_imports[];
