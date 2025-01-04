@@ -85,7 +85,7 @@ int setupDynarec() {
 	so_stack = (uint8_t *)memalign(0x1000, DYNAREC_STACK_SIZE);
 	tpidr_el0 = (uint8_t *)memalign(0x1000, DYNAREC_TPIDR_SIZE);
 	memset(tpidr_el0, 0, DYNAREC_TPIDR_SIZE);
-	memset(so_stack, 0, 8 * 1024 * 1024);
+	memset(so_stack, 0, DYNAREC_STACK_SIZE);
 #ifdef USE_INTERPRETER
 	uc_err err = uc_open(UC_ARCH_ARM64, UC_MODE_ARM, &uc);
 	if (err) {
