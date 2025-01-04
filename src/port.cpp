@@ -586,6 +586,9 @@ int WarGamepad_GetGamepadButtons(int padnum) {
 	int mask = 0;
 	int count;
 	const unsigned char *buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &count);
+	if (!buttons) {
+		return mask;
+	}
 
 	if (buttons[GLFW_GAMEPAD_BUTTON_A] == GLFW_PRESS)
 		mask |= 0x1;
@@ -705,6 +708,7 @@ void loadJPG(void *_this, uint8_t *buf, int size) {
 	uint8_t *data = stbi_load_from_memory(buf, size, &w, &h, NULL, 4);
 	if (!data) {
 		printf("Failed to load jpg file\n");
+		abort();
 		return;
 	}
 	tga_ctx.buffer = decomp_buffer;

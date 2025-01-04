@@ -25,6 +25,7 @@ std::vector<uc_hook> hooks;
 #endif
 
 std::vector<uintptr_t> native_funcs;
+std::vector<std::string> native_funcs_names;
 
 extern uintptr_t __stack_chk_fail;
 static uint64_t __stack_chk_guard_fake = 0x4242424242424242;
@@ -109,18 +110,28 @@ void unresolved_stub_token() { }
 #ifdef USE_INTERPRETER
 static void hook_import(uc_engine *uc, uint64_t address, uint32_t size, void *user_data) {
 	address -= HOOKS_BASE_ADDRESS;
-	printf(">>> Import called %llx\n", address / 4);
+	//printf(">>> Import called %llx (%s)\n", address / 4, native_funcs_names[address / 4].c_str());
 	uc_emu_stop(uc);
 	auto host_next = (void (*)(void *))(native_funcs[address / 4]);
-	printf("host_next 0x%llx\n", host_next);
+	host_next((void*)so_dynarec);
+}
+
+static void hook_patch(uc_engine *uc, uint64_t mem_address, uint32_t size, void *user_data) {
+	//printf("hook_patch %llx\n", mem_address);
+	uint32_t address = *(uint32_t *)mem_address / 4;
+	//printf(">>> Hooked function called %llx (%s)\n", address, native_funcs_names[address].c_str());
+	uc_emu_stop(uc);
+	auto host_next = (void (*)(void *))(native_funcs[address]);
 	host_next((void*)so_dynarec);
 }
 #endif
 
 void hook_arm64(uintptr_t addr, dynarec_hook *dst) {
 #ifdef USE_INTERPRETER
+	//printf("hook_arm64 %llx, %s\n", addr, native_funcs_names[(uint32_t)dst->trampoline / 4].c_str());
 	auto hook = hooks.emplace_back();
-	uc_hook_add(uc, &hook, UC_HOOK_CODE, (void *)hook_import, NULL, HOOKS_BASE_ADDRESS + (uintptr_t)dst->trampoline, HOOKS_BASE_ADDRESS + (uintptr_t)dst->trampoline);
+	*(uint32_t *)addr = dst->trampoline;
+	uc_hook_add(uc, &hook, UC_HOOK_CODE, (void *)hook_patch, NULL, addr, addr);
 #else
 	if (addr == 0)
 		return;
@@ -146,11 +157,10 @@ uc_hook mem_write_prot_hook;
 
 std::vector<u64> pages;
 
-bool unmappedMemoryHook(uc_engine* uc, uc_mem_type /*type*/, u64 start_address, int size, u64 /*value*/, void* user_data) {
+bool unmappedMemoryHook(uc_engine* uc, uc_mem_type type, u64 start_address, int size, u64 value, void* user_data) {
 	const auto generate_page = [&](u64 base_address) {
-		//printf("map %llx\n", base_address);
-		uc_err err = uc_mem_map_ptr(uc, base_address, 0x1000, UC_PROT_ALL, base_address);
-        if (err) {
+		uc_err err = uc_mem_map_ptr(uc, base_address, 0x1000, UC_PROT_READ, (void *)base_address);
+        if (err && err != UC_ERR_MAP) {
 			printf("Failed to allocate page for unmapped memory: %u (%s)\n", err, uc_strerror(err));
 			abort();
 			return;
@@ -159,13 +169,7 @@ bool unmappedMemoryHook(uc_engine* uc, uc_mem_type /*type*/, u64 start_address, 
 		pages.emplace_back(base_address);
 	};
 
-    const auto is_in_range = [](u64 addr, u64 start, u64 end) {
-        if (start <= end)
-            return addr >= start && addr <= end;  // fffff[tttttt]fffff
-        return addr >= start || addr <= end;      // ttttt]ffffff[ttttt
-    };
-
-    const u64 start_address_page = start_address & ~uint64_t(0xFFF);
+    const u64 start_address_page = start_address & ~u64(0xFFF);
     const u64 end_address = start_address + size - 1;
 
 	//printf("wants to map %llx with size %d\n", start_address, size);
@@ -182,7 +186,7 @@ bool unmappedMemoryHook(uc_engine* uc, uc_mem_type /*type*/, u64 start_address, 
 int so_load(const char *filename, void **base_addr) {
 #ifdef USE_INTERPRETER
 	// Set up dynamic memory mapping hooks
-	uc_err err = uc_hook_add(uc, &mem_invalid_hook, UC_HOOK_MEM_INVALID, (void*)unmappedMemoryHook, NULL, 0, ~uint64_t(0));
+	uc_err err = uc_hook_add(uc, &mem_invalid_hook, UC_HOOK_MEM_INVALID, (void*)unmappedMemoryHook, NULL, 0, ~u64(0));
     if (err) {
 		printf("Failed to setup dynamic memory handler %u (%s)\n", err, uc_strerror(err));
 		return -1;
@@ -344,7 +348,7 @@ uintptr_t get_trampoline(const char *name, dynarec_import *funcs, int num_funcs)
 				if (!funcs[k].mapped) {
 					uint32_t nop = 0xD503201F;
 					auto hook = hooks.emplace_back();
-					printf("%s %llx hook on %llx\n", name, (uintptr_t)funcs[k].trampoline / 4, HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline - (uintptr_t)load_base);
+					//printf("%s %llx hook on %llx\n", name, (uintptr_t)funcs[k].trampoline / 4, HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline - (uintptr_t)load_base);
 					uc_hook_add(uc, &hook, UC_HOOK_CODE, (void *)hook_import, NULL, HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline, HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline);
 					uc_mem_write(uc, HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline, &nop, 4);
 					funcs[k].mapped = true;
@@ -475,40 +479,26 @@ uintptr_t next_pc;
 void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry)
 {
 	uintptr_t generator = entry;
-	printf("Run 0x%llx with end_program_token %llx\n", entry - (uintptr_t)text_base, end_program_token);
-	printf("exit_token %llx\n", load_base);
+	//printf("Run 0x%llx with end_program_token %llx\n", entry - (uintptr_t)text_base, end_program_token);
 #ifdef USE_INTERPRETER
 	uintptr_t exit_token = (uintptr_t)load_base;
-	uc_reg_write(uc, REG_FP, load_base);
+	uc_reg_write(uc, REG_FP, &exit_token);
 	uc_err err = UC_ERR_EXCEPTION;
 	uintptr_t sp, pc, fp;
 	do {
-		uc_reg_read(uc, UC_ARM64_REG_X30, &fp);
-		printf("Run 0x%llx with FP: %llx\n", entry - (uintptr_t)text_base, fp);
-		err = uc_emu_start(uc, entry, exit_token, 0, 0);
-		if (!err) {
-			uc_reg_read(uc, UC_ARM64_REG_PC, &pc);
-			uc_reg_read(uc, UC_ARM64_REG_X30, &fp);
-			//if (pc == end_program_token)
-			//	break;
-		}
-		entry = next_pc;
-	} while (!err || err == UC_ERR_EXCEPTION);
+		uc_reg_read(uc, REG_FP, &fp);
+		//printf("Run 0x%llx with FP: %llx (%llx)\n", entry - (uintptr_t)text_base, fp, fp - exit_token);
+		err = uc_emu_start(uc, entry, fp, 0, 0);
+		uc_reg_read(uc, UC_ARM64_REG_PC, &entry);
+		if (entry == exit_token)
+			break;
+	} while (!err);
 	if (err) {
 		uc_reg_read(uc, UC_ARM64_REG_SP, &sp);
 		uc_reg_read(uc, UC_ARM64_REG_PC, &pc);
-		uc_reg_read(uc, UC_ARM64_REG_X30, &fp);
-		if (pc == fp)
-			return;
+		uc_reg_read(uc, REG_FP, &fp);
 		printf("Fatal error in Unicorn: %u %s on PC: %llx, SP: %llx, FP: %llx\n", err, uc_strerror(err), pc - (uintptr_t)load_base, sp, fp - (uintptr_t)load_base);
 		std::abort();
-	}
-	else
-	{
-		uc_reg_read(uc, UC_ARM64_REG_SP, &sp);
-		uc_reg_read(uc, UC_ARM64_REG_PC, &pc);
-		uc_reg_read(uc, UC_ARM64_REG_X30, &fp);
-		printf("Exited: %u %s on PC: %llx, SP: %llx, FP: %llx\n", err, uc_strerror(err), pc - (uintptr_t)load_base, sp, fp - (uintptr_t)load_base);
 	}
 #else
 	jit->SetRegister(REG_FP, (uintptr_t)end_program_token);
@@ -534,7 +524,7 @@ void so_execute_init_array(void) {
 			int (** init_array)() = (int (**)())((uintptr_t)text_base + sec_hdr[i].sh_addr);
 			for (int j = 0; j < sec_hdr[i].sh_size / 8; j++) {
 				if (init_array[j] != 0) {
-					printf("init_array on 0x%llx\n", (uintptr_t)init_array[j]);
+					printf("init_array on 0x%llx (%llx)\n", (uintptr_t)init_array[j], (uintptr_t)init_array[j] - (uintptr_t)text_base);
 					so_run_fiber(so_dynarec, (uintptr_t)init_array[j]);
 				}
 			}

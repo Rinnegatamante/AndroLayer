@@ -8,6 +8,7 @@
 
 extern void *dynarec_base_addr;
 extern std::vector<uintptr_t> native_funcs;
+extern std::vector<std::string> native_funcs_names;
 #ifdef USE_INTERPRETER
 extern std::vector<uc_hook> hooks;
 extern uintptr_t next_pc;
@@ -57,6 +58,7 @@ struct ThunkImpl {
 #ifdef USE_INTERPRETER
 				uint64_t reg_val;
 				uc_reg_read(uc, UC_ARM64_REG_X0 + idx_reg, &reg_val);
+				//printf("reg_val %llx on %d\n", reg_val, idx_reg);
 				return (T)reg_val;
 #else
 				return (T)(jit->GetRegister(idx_reg));
@@ -138,7 +140,8 @@ struct ThunkImpl {
 		
 		// Jump back to the host :)
 #ifdef USE_INTERPRETER
-		next_pc = addr_next;
+		uc_reg_write(uc, UC_ARM64_REG_PC, &addr_next);
+		//printf("jump back to %llx (%llx)\n", addr_next, addr_next - (uintptr_t)dynarec_base_addr);
 #else
 		jit->SetPC(addr_next);
 #endif
@@ -192,6 +195,7 @@ dynarec_import gen_wrapper(const char *symname)
 	T::symname = symname;
 	uintptr_t f = (uintptr_t)T::bridge;
 	native_funcs.push_back(f);
+	native_funcs_names.push_back(symname);
 
 	// Setup the trampoline
 	return (dynarec_import) {
@@ -221,11 +225,12 @@ dynarec_hook gen_trampoline(const char *symname)
 	T::symname = symname;
 	uintptr_t f = (uintptr_t)T::bridge;
 	native_funcs.push_back(f);
+	native_funcs_names.push_back(symname);
 
 	// Setup the trampoline
 	return (dynarec_hook) {
 #ifdef USE_INTERPRETER
-		.mapped = false,
+		.mapped = true,
 		.trampoline = (uint32_t)((native_funcs.size() - 1) * 4)
 #else
 		// The trampoline works by calling an SVC Handler where we then
