@@ -82,8 +82,8 @@ int main(int argc, char** argv) {
 }*/
 
 int setupDynarec() {
-	so_stack = (uint8_t *)memalign(0x1000, DYNAREC_STACK_SIZE);
-	tpidr_el0 = (uint8_t *)memalign(0x1000, DYNAREC_TPIDR_SIZE);
+	so_stack = (uint8_t *)memalign(0x100000, ALIGN_MEM(DYNAREC_STACK_SIZE, 0x100000));
+	tpidr_el0 = (uint8_t *)memalign(0x100000, ALIGN_MEM(DYNAREC_TPIDR_SIZE, 0x100000));
 	memset(tpidr_el0, 0, DYNAREC_TPIDR_SIZE);
 	memset(so_stack, 0, DYNAREC_STACK_SIZE);
 #ifdef USE_INTERPRETER
@@ -92,14 +92,18 @@ int setupDynarec() {
 		printf("Failed to setup interpreter with error returned: %u (%s)\n", err, uc_strerror(err));
 		return -1;
 	}
-	err = uc_mem_map_ptr(uc, (uintptr_t)so_stack, DYNAREC_STACK_SIZE, UC_PROT_ALL, so_stack);
+	err = uc_mem_map_ptr(uc, (uintptr_t)so_stack, ALIGN_MEM(DYNAREC_STACK_SIZE, 0x100000), UC_PROT_ALL, so_stack);
 	if (err) {
 		printf("Failed to map stack with error returned: %u (%s)\n", err, uc_strerror(err));
 		return -1;
 	}
-	// FIXME: If we set SP to start of stack, we read out of bounds with Unicorn :/
-	uintptr_t sp = (uintptr_t)so_stack + DYNAREC_STACK_SIZE / 2;
-	uintptr_t tpidr_el0_ptr = (uintptr_t)tpidr_el0_ptr;
+	err = uc_mem_map_ptr(uc, (uintptr_t)tpidr_el0, ALIGN_MEM(DYNAREC_TPIDR_SIZE, 0x100000), UC_PROT_ALL, tpidr_el0);
+	if (err) {
+		printf("Failed to map TPIDR EL0 region with error returned: %u (%s)\n", err, uc_strerror(err));
+		return -1;
+	}
+	uintptr_t sp = (uintptr_t)so_stack + DYNAREC_STACK_SIZE - 8;
+	uintptr_t tpidr_el0_ptr = (uintptr_t)tpidr_el0;
 	uc_reg_write(uc, UC_ARM64_REG_SP, &sp);
 	uc_reg_write(uc, UC_ARM64_REG_TPIDR_EL0, &tpidr_el0_ptr);
 	uc_reg_write(uc, UC_ARM64_REG_TPIDRRO_EL0, &tpidr_el0_ptr);
@@ -113,7 +117,7 @@ int setupDynarec() {
 	so_dynarec_cfg.tpidr_el0 = (uint64_t *)tpidr_el0;
 	so_dynarec = new Dynarmic::A64::Jit(so_dynarec_cfg);
 	printf("AARCH64 dynarec inited with address: 0x%llx and TPIDR EL0 pointing at: 0x%llx\n", so_dynarec, tpidr_el0);
-	so_dynarec->SetSP((uintptr_t)so_stack + DYNAREC_STACK_SIZE / 2);
+	so_dynarec->SetSP((uintptr_t)so_stack + DYNAREC_STACK_SIZE - 8);
 	so_dynarec_env.parent = so_dynarec;
 #endif
 	return 0;

@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <map>
+#include <bits/stdc++.h>
 
 #include "elf.h"
 #include "dynarec.h"
@@ -153,24 +154,69 @@ void so_free_temp(void) {
 #ifdef USE_INTERPRETER
 // Hooks to deal with dynamically allocated memory mapping
 uc_hook mem_invalid_hook;
-std::vector<u64> pages;
+
+typedef struct {
+	uint64_t start;
+	uint64_t end;
+} mem_page;
+std::vector<mem_page> pages;
+
+bool compareByAddress(const mem_page &a, const mem_page &b)
+{
+    return a.start < b.start;
+}
 
 bool unmappedMemoryHook(uc_engine* uc, uc_mem_type type, u64 start_address, int size, u64 value, void* user_data) {
 	const auto generate_page = [&](u64 base_address) {
 		uc_err err = uc_mem_map_ptr(uc, base_address, 0x1000, UC_PROT_ALL, (void *)base_address);
-		if (err && err != UC_ERR_MAP) {
-			printf("Failed to allocate page for unmapped memory: %u (%s)\n", err, uc_strerror(err));
-			abort();
-			return;
+		if (err) {
+			if (err != UC_ERR_MAP) {
+				printf("Failed to allocate page for unmapped memory: %u (%s)\n", err, uc_strerror(err));
+				abort();
+				return;
+			}
+		} else {
+			mem_page p;
+			p.start = base_address;
+			p.end = base_address + 0x1000;
+			pages.emplace_back(p);
 		}
-
-		pages.emplace_back(base_address);
 	};
-
+	
+	if (pages.size() > 256) {
+		std::sort(pages.begin(), pages.end(), compareByAddress);
+		int page_idx = 1;
+		uint64_t start_address = 0xDEADBEEF;
+		uint32_t start_size = pages.size();
+		while (page_idx < pages.size()) {
+			if (pages[page_idx - 1].end == pages[page_idx].start) {
+				uc_mem_unmap(uc, pages[page_idx - 1].start, pages[page_idx - 1].end - pages[page_idx - 1].start);
+				if (start_address == 0xDEADBEEF) {
+					start_address = pages[page_idx - 1].start;
+				}
+				pages.erase(pages.begin() + (page_idx - 1));
+			} else {
+				if (start_address != 0xDEADBEEF) {
+					uc_mem_unmap(uc, pages[page_idx - 1].start, pages[page_idx - 1].end - pages[page_idx - 1].start);
+					uc_mem_map_ptr(uc, start_address, pages[page_idx - 1].end - start_address, UC_PROT_ALL, (void *)start_address);
+					pages[page_idx - 1].start = start_address;
+					start_address = 0xDEADBEEF;
+				}
+				page_idx++;
+			}
+		}
+		if (start_address != 0xDEADBEEF) {
+			uc_mem_unmap(uc, pages[page_idx - 1].start, pages[page_idx - 1].end - pages[page_idx - 1].start);
+			uc_mem_map_ptr(uc, start_address, pages[page_idx - 1].end - start_address, UC_PROT_ALL, (void *)start_address);
+			pages[page_idx - 1].start = start_address;
+		}
+		uint32_t end_size = pages.size();
+		printf("Merged contiguous pages. Went from %u pages to %u\n", start_size, end_size);
+	}
+	
 	const u64 start_address_page = start_address & ~u64(0xFFF);
 	const u64 end_address = start_address + size - 1;
 
-	//printf("wants to map %llx with size %d\n", start_address, size);
 	u64 current_address = start_address_page;
 	do {
 		generate_page(current_address);
