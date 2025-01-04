@@ -13,8 +13,8 @@ OBJS = \
 	main.o \
 	glad/glad.o
 
-CXXFLAGS = -O0 -fpermissive -g -std=c++20 
-CFLAGS = -O0 -g
+CXXFLAGS = -O3 -fpermissive -g -std=c++20 
+CFLAGS = -O3 -g
 
 ifeq ($(NO_DEBUG),1)
 CXXFLAGS += -DNDEBUG

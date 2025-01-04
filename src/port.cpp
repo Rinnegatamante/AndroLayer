@@ -42,7 +42,7 @@ char *stpcpy(char *s1, char *s2) {
 
 int __android_log_print(int prio, const char *tag, const char *fmt) {
 	std::string s = parse_format(fmt, 3); // startReg is # of fixed function args + 1
-	printf("[%s] %s\n", tag, s.c_str());
+	debugLog("[%s] %s\n", tag, s.c_str());
 	
 	return 0;
 }
@@ -66,7 +66,7 @@ int pthread_create_fake (Dynarmic::A64::Jit *jit, pthread_t *__restrict __newthr
 			   void *(*__start_routine) (void *),
 			   void *__restrict __arg)
 {
-	printf("NOIMPL: pthread_create called\n");
+	debugLog("NOIMPL: pthread_create called\n");
 	std::abort();
 	return 0;
 }
@@ -130,7 +130,7 @@ int pthread_mutex_unlock_fake(pthread_mutex_t** uid) {
 
 FILE *fopen_fake(char *fname, char *mode) {
 	FILE *f = fopen(fname, mode);
-	printf("fopen(%s, %s) -> %llx\n", fname, mode, f);
+	debugLog("fopen(%s, %s) -> %llx\n", fname, mode, f);
 	return f;
 }
 
@@ -192,7 +192,7 @@ std::unordered_map<uintptr_t, int (*)(const void *, const void *)> qsort_db;
 void qsort_fake(void *base, size_t num, size_t width, int(*compare)(const void *key, const void *element)) {
 	auto native_f = qsort_db.find((uintptr_t)compare);
 	if (native_f == qsort_db.end()) {
-		printf("Fatal error: Invalid qsort function: %llx\n", (uintptr_t)compare - (uintptr_t)dynarec_base_addr);
+		debugLog("Fatal error: Invalid qsort function: %llx\n", (uintptr_t)compare - (uintptr_t)dynarec_base_addr);
 		abort();
 	}
 	qsort(base, num, width, native_f->second);
@@ -203,7 +203,7 @@ std::unordered_map<uintptr_t, int (*)(const void *, const void *)> bsearch_db;
 void *bsearch_fake(const void *key, const void *base, size_t num, size_t size, int (*compare)(const void *element1, const void *element2)) {
 	auto native_f = bsearch_db.find((uintptr_t)compare);
 	if (native_f == bsearch_db.end()) {
-		printf("Fatal error: Invalid bsearch function: %llx\n", (uintptr_t)compare - (uintptr_t)dynarec_base_addr);
+		debugLog("Fatal error: Invalid bsearch function: %llx\n", (uintptr_t)compare - (uintptr_t)dynarec_base_addr);
 		abort();
 	}
 	return bsearch(key, base, num, size, native_f->second);
@@ -224,7 +224,7 @@ typedef struct {
 } aarch64_timezone;
 
 int gettimeofday_hook(aarch64_timeval *tv, aarch64_timezone *tz) {
-	//printf("Entering gettimeofday\n");
+	//debugLog("Entering gettimeofday\n");
 	struct timeval t;
 #ifdef __MINGW64__
 	int ret = mingw_gettimeofday(&t, (struct timezone *)tz);
@@ -233,7 +233,7 @@ int gettimeofday_hook(aarch64_timeval *tv, aarch64_timezone *tz) {
 #endif
 	tv->tv_sec = t.tv_sec;
 	tv->tv_usec = t.tv_usec;
-	//printf("Exiting gettimeofday\n");
+	//debugLog("Exiting gettimeofday\n");
 	return ret;
 }
 
@@ -492,7 +492,7 @@ size_t dynarec_imports_num = sizeof(dynarec_imports) / sizeof(*dynarec_imports);
 int exec_booting_sequence(void *dynarec_base_addr) {
 	int numRASFiles = *(int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("numRASFiles"));
 	if (numRASFiles != 6) {
-		printf("numRASFiles is not 6, is %d (addr %llx)!\n", numRASFiles, so_find_addr_rx("numRASFiles"));
+		debugLog("numRASFiles is not 6, is %d (addr %llx)!\n", numRASFiles, so_find_addr_rx("numRASFiles"));
 		abort();
 	}
 	
@@ -502,23 +502,23 @@ int exec_booting_sequence(void *dynarec_base_addr) {
 	uintptr_t ShowJoystick = (uintptr_t)so_find_addr_rx("_Z12ShowJoystickb"); // int -> uint64_t
 	uintptr_t NVEventAppMain = (uintptr_t)so_find_addr_rx("_Z14NVEventAppMainiPPc"); // int, char *[] -> int
 	
-	printf("----------------------\n");
-	printf("Max Payne Loader:\n");
-	printf("----------------------\n");
+	debugLog("----------------------\n");
+	debugLog("Max Payne Loader:\n");
+	debugLog("----------------------\n");
 	
 	if (!initGraphics || !ShowJoystick || !NVEventAppMain) {
-		printf("Failed to find required symbols\n");
+		debugLog("Failed to find required symbols\n");
 		return -1;
 	}
 	
-	printf("initGraphics: 0x%llx\n", (uint64_t)initGraphics);
-	printf("ShowJoystick: 0x%llx\n", (uint64_t)ShowJoystick);
-	printf("NVEventAppMain: 0x%llx\n", (uint64_t)NVEventAppMain);
+	debugLog("initGraphics: 0x%llx\n", (uint64_t)initGraphics);
+	debugLog("ShowJoystick: 0x%llx\n", (uint64_t)ShowJoystick);
+	debugLog("NVEventAppMain: 0x%llx\n", (uint64_t)NVEventAppMain);
 	
-	printf("Executing initGraphics...\n");
+	debugLog("Executing initGraphics...\n");
 	so_run_fiber(so_dynarec, (uintptr_t)dynarec_base_addr + initGraphics);
 	
-	printf("Executing ShowJoystick...\n");
+	debugLog("Executing ShowJoystick...\n");
 #ifdef USE_INTERPRETER
 	uint64_t zero = 0;
 	uc_reg_write(uc, UC_ARM64_REG_X0, &zero);
@@ -527,7 +527,7 @@ int exec_booting_sequence(void *dynarec_base_addr) {
 #endif
 	so_run_fiber(so_dynarec, (uintptr_t)dynarec_base_addr + ShowJoystick);
 	
-	printf("Executing NVEventAppMain...\n");
+	debugLog("Executing NVEventAppMain...\n");
 #ifdef USE_INTERPRETER
 	uc_reg_write(uc, UC_ARM64_REG_X0, &zero);
 	uc_reg_write(uc, UC_ARM64_REG_X1, &zero);
@@ -541,12 +541,12 @@ int exec_booting_sequence(void *dynarec_base_addr) {
 }
 
 uint8_t NVEventEGLInit(void) {
-	printf("Initing GL context\n");
+	debugLog("Initing GL context\n");
 	return 1;
 }
 
 void NVEventEGLSwapBuffers(void) {
-	printf("Swapping backbuffer\n");
+	debugLog("Swapping backbuffer\n");
 	glfwSwapBuffers(glfw_window);
 }
 
@@ -623,7 +623,7 @@ int NVThreadGetCurrentJNIEnv() {
 #else
 	uintptr_t addr_next = so_dynarec->GetRegister(REG_FP);
 #endif
-	printf("GetCurrentJNIENv called from %x\n", (uintptr_t)addr_next - (uintptr_t)dynarec_base_addr);
+	debugLog("GetCurrentJNIENv called from %x\n", (uintptr_t)addr_next - (uintptr_t)dynarec_base_addr);
 
 	return 0x1337;
 }
@@ -684,7 +684,7 @@ float WarGamepad_GetGamepadAxis(int padnum, int axis) {
 }
 
 int GetAndroidCurrentLanguage(void) {
-	printf("GetAndroidCurrentLanguage returning English\n");
+	debugLog("GetAndroidCurrentLanguage returning English\n");
 	return 0; // English
 }
 
@@ -692,7 +692,7 @@ void SetAndroidCurrentLanguage(int lang) {
 }
 
 int ReadDataFromPrivateStorage(const char *file, void **data, int *size) {
-	printf("ReadDataFromPrivateStorage %s\n", file);
+	debugLog("ReadDataFromPrivateStorage %s\n", file);
 
 	FILE *f = fopen(file, "rb");
 	if (!f)
@@ -721,7 +721,7 @@ int ReadDataFromPrivateStorage(const char *file, void **data, int *size) {
 }
 
 int WriteDataToPrivateStorage(const char *file, const void *data, int size) {
-	printf("WriteDataToPrivateStorage %s\n", file);
+	debugLog("WriteDataToPrivateStorage %s\n", file);
 
 	FILE *f = fopen(file, "wb");
 	if (!f)
@@ -751,14 +751,14 @@ void loadJPG(void *_this, uint8_t *buf, int size) {
 	// Max Payne doesn't support RLE'd TGA files
 	stbi_write_tga_with_rle = 0;
 
-	//printf("loadJPG called with buf: %llx and size: %d\n", buf, size);
+	//debugLog("loadJPG called with buf: %llx and size: %d\n", buf, size);
 	//FILE *f = fopen("dump.jpg", "wb");
 	//fwrite(buf, 1, size, f);
 	//fclose(f);
 	int w, h;
 	uint8_t *data = stbi_load_from_memory(buf, size, &w, &h, NULL, 4);
 	if (!data) {
-		printf("Failed to load jpg file\n");
+		debugLog("Failed to load jpg file\n");
 		abort();
 		return;
 	}
@@ -771,7 +771,7 @@ void loadJPG(void *_this, uint8_t *buf, int size) {
 	//fwrite(decomp_buffer, 1, tga_ctx.offset, f);
 	//fclose(f);
 	
-	//printf("Running loadTGA\n");
+	//debugLog("Running loadTGA\n");
 #ifdef USE_INTERPRETER
 	uintptr_t ptr = (uintptr_t)_this;
 	uc_reg_write(uc, UC_ARM64_REG_X0, &ptr);
@@ -786,7 +786,7 @@ void loadJPG(void *_this, uint8_t *buf, int size) {
 #endif
 	so_run_fiber(so_dynarec, loadTGA);
 	
-	//printf("Returning from loadJPG\n");
+	//debugLog("Returning from loadJPG\n");
 }
 
 int OS_ScreenGetHeight(void) {

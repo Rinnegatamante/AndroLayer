@@ -23,6 +23,7 @@ void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
 bool initOpenGL(int major_ver, int minor_ver) {
 	// Initialize OpenGL
 	glfwInit();
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, major_ver);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, minor_ver);
 
@@ -36,7 +37,7 @@ bool initOpenGL(int major_ver, int minor_ver) {
 	glfwMakeContextCurrent(glfw_window);
 
 	// Load GL functions via glfw3
-	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+	if (!gladLoadGLES2Loader((GLADloadproc)glfwGetProcAddress)) {
 		printf("Failed to initialize glad\n");
 		return false;
 	}	

@@ -51,11 +51,11 @@ extern FILE *stderr_fake;
 			var_type = VAR_STRING; \
 			break; \
 		default: \
-			printf("Unrecognized format token %c\n", *s); \
+			debugLog("Unrecognized format token %c\n", *s); \
 			break; \
 		} \
 		if (var_type == VAR_UNKNOWN) { \
-			printf("Failure parsing va_list with format %s due to unknown var type\n", format); \
+			debugLog("Failure parsing va_list with format %s due to unknown var type\n", format); \
 			abort(); \
 		}
 
@@ -191,14 +191,14 @@ PROCESS_VAR:
 			}
 			if (onStack)
 				sp -= 8;
-			//printf("Argument decoded: %s\n", tmp);
+			//debugLog("Argument decoded: %s\n", tmp);
 			res.replace(str_offs + start_offs, end_offs - start_offs, tmp);
 			str_offs = res.size() - orig_sz;
 		}
 		s = strstr(s, "%");
 	}
 	
-	//printf("Finished parsing va_list %s -> %s\n", format, res.c_str());
+	//debugLog("Finished parsing va_list %s -> %s\n", format, res.c_str());
 	return res;
 }
 
@@ -222,7 +222,7 @@ PROCESS_VAR:
 		s = strstr(s, "%");
 	}
 	
-	//printf("Finished counting arguments in %s -> %u\n", format, res);
+	//debugLog("Finished counting arguments in %s -> %u\n", format, res);
 	return res;
 }
 
@@ -292,14 +292,14 @@ PROCESS_VAR:
 				sprintf(tmp, token, __aarch64_va_arg(double, va, 1));
 				break;
 			}
-			//printf("Argument decoded: %s\n", tmp);
+			//debugLog("Argument decoded: %s\n", tmp);
 			res.replace(str_offs + start_offs, end_offs - start_offs, tmp);
 			str_offs = res.size() - orig_sz;
 		}
 		s = strstr(s, "%");
 	}
 	
-	printf("Finished parsing va_list %s -> %s\n", format, res.c_str());
+	debugLog("Finished parsing va_list %s -> %s\n", format, res.c_str());
 	return res;
 }
 
@@ -388,7 +388,7 @@ int __aarch64_sscanf(const char *buffer, const char *format) {
 	case 8:
 		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3], out_ptrs[4], out_ptrs[5], out_ptrs[6], out_ptrs[7]);
 	default:
-		printf("Failure running sscanf on %s. Too many arguments\n", format);
+		debugLog("Failure running sscanf on %s. Too many arguments\n", format);
 		abort();
 		break;
 	}

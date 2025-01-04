@@ -3,7 +3,7 @@
 
 // OpenGL config
 #define OPENGL_MAJOR_VER 2
-#define OPENGL_MINOR_VER 1
+#define OPENGL_MINOR_VER 0
 
 // Game window setup
 #define WINDOW_WIDTH 1280

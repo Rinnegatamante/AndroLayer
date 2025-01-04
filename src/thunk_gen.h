@@ -109,7 +109,7 @@ struct ThunkImpl {
 #else
 		uintptr_t addr_next = jit->GetRegister(REG_FP);
 #endif
-		//printf("RA is %llx\n", (uintptr_t)addr_next - (uintptr_t)dynarec_base_addr);
+		//debugLog("RA is %llx\n", (uintptr_t)addr_next - (uintptr_t)dynarec_base_addr);
 		
 		// Gather arguments from the guest environment and pass them to the wrapped
 		// function.
@@ -151,7 +151,7 @@ struct ThunkImpl {
 		// Jump back to the host :)
 #ifdef USE_INTERPRETER
 		uc_reg_write(uc, UC_ARM64_REG_PC, &addr_next);
-		//printf("jump back to %llx (%llx)\n", addr_next, addr_next - (uintptr_t)dynarec_base_addr);
+		//debugLog("jump back to %llx (%llx)\n", addr_next, addr_next - (uintptr_t)dynarec_base_addr);
 #else
 		jit->SetPC(addr_next);
 #endif

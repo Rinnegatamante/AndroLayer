@@ -71,4 +71,10 @@ void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry);
 		hook_arm64((uintptr_t)dynarec_base_addr + so_find_addr_rx(symname), &hook); \
 	}
 
+#ifdef NDEBUG
+#define debugLog
+#else
+#define debugLog printf
+#endif
+
 #endif

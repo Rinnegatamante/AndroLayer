@@ -111,16 +111,16 @@ void unresolved_stub_token() { }
 #ifdef USE_INTERPRETER
 static void hook_import(uc_engine *uc, uint64_t address, uint32_t size, void *user_data) {
 	address -= HOOKS_BASE_ADDRESS;
-	//printf(">>> Import called %llx (%s)\n", address / 4, native_funcs_names[address / 4].c_str());
+	//debugLog(">>> Import called %llx (%s)\n", address / 4, native_funcs_names[address / 4].c_str());
 	uc_emu_stop(uc);
 	auto host_next = (void (*)(void *))(native_funcs[address / 4]);
 	host_next((void*)so_dynarec);
 }
 
 static void hook_patch(uc_engine *uc, uint64_t mem_address, uint32_t size, void *user_data) {
-	//printf("hook_patch %llx\n", mem_address);
+	//debugLog("hook_patch %llx\n", mem_address);
 	uint32_t address = *(uint32_t *)mem_address / 4;
-	//printf(">>> Hooked function called %llx (%s)\n", address, native_funcs_names[address].c_str());
+	//debugLog(">>> Hooked function called %llx (%s)\n", address, native_funcs_names[address].c_str());
 	uc_emu_stop(uc);
 	auto host_next = (void (*)(void *))(native_funcs[address]);
 	host_next((void*)so_dynarec);
@@ -129,7 +129,7 @@ static void hook_patch(uc_engine *uc, uint64_t mem_address, uint32_t size, void 
 
 void hook_arm64(uintptr_t addr, dynarec_hook *dst) {
 #ifdef USE_INTERPRETER
-	//printf("hook_arm64 %llx, %s\n", addr, native_funcs_names[(uint32_t)dst->trampoline / 4].c_str());
+	//debugLog("hook_arm64 %llx, %s\n", addr, native_funcs_names[(uint32_t)dst->trampoline / 4].c_str());
 	auto hook = hooks.emplace_back();
 	*(uint32_t *)addr = dst->trampoline;
 	uc_hook_add(uc, &hook, UC_HOOK_CODE, (void *)hook_patch, NULL, addr, addr);
@@ -171,7 +171,7 @@ bool unmappedMemoryHook(uc_engine* uc, uc_mem_type type, u64 start_address, int 
 		uc_err err = uc_mem_map_ptr(uc, base_address, 0x1000, UC_PROT_ALL, (void *)base_address);
 		if (err) {
 			if (err != UC_ERR_MAP) {
-				printf("Failed to allocate page for unmapped memory: %u (%s)\n", err, uc_strerror(err));
+				debugLog("Failed to allocate page for unmapped memory: %u (%s)\n", err, uc_strerror(err));
 				abort();
 				return;
 			}
@@ -211,7 +211,7 @@ bool unmappedMemoryHook(uc_engine* uc, uc_mem_type type, u64 start_address, int 
 			pages[page_idx - 1].start = start_address;
 		}
 		uint32_t end_size = pages.size();
-		printf("Merged contiguous pages. Went from %u pages to %u\n", start_size, end_size);
+		debugLog("Merged contiguous pages. Went from %u pages to %u\n", start_size, end_size);
 	}
 	
 	const u64 start_address_page = start_address & ~u64(0xFFF);
@@ -232,7 +232,7 @@ int so_load(const char *filename, void **base_addr) {
 	// Set up dynamic memory mapping hooks
 	uc_err err = uc_hook_add(uc, &mem_invalid_hook, UC_HOOK_MEM_INVALID, (void*)unmappedMemoryHook, NULL, 0, ~u64(0));
 	if (err) {
-		printf("Failed to setup dynamic memory handler %u (%s)\n", err, uc_strerror(err));
+		debugLog("Failed to setup dynamic memory handler %u (%s)\n", err, uc_strerror(err));
 		return -1;
 	}
 #endif
@@ -292,10 +292,10 @@ int so_load(const char *filename, void **base_addr) {
 		res = -3;
 		goto err_free_so;
 	}
-	printf("Total LOAD size: %llu bytes\n", load_size);
+	debugLog("Total LOAD size: %llu bytes\n", load_size);
 
 	// allocate space for all load segments (align to page size)
-	printf("Allocating dynarec memblock of %llu bytes\n", load_size);
+	debugLog("Allocating dynarec memblock of %llu bytes\n", load_size);
 	load_base = memalign(0x1000, load_size);
 	if (!load_base)
 		goto err_free_so;
@@ -304,13 +304,13 @@ int so_load(const char *filename, void **base_addr) {
 #ifdef USE_INTERPRETER
 	err = uc_mem_map_ptr(uc, (uintptr_t)load_base, load_size, UC_PROT_ALL, load_base);
 	if (err) {
-		printf("Failed to map ELF memory %u (%s)\n", err, uc_strerror(err));
+		debugLog("Failed to map ELF memory %u (%s)\n", err, uc_strerror(err));
 		return -1;
 	}
 
 	err = uc_mem_map(uc, (uintptr_t)HOOKS_BASE_ADDRESS, HOOKS_BLOCK_SIZE, UC_PROT_ALL);
 	if (err) {
-		printf("Failed to allocate region for function hooks\n");
+		debugLog("Failed to allocate region for function hooks\n");
 		return -1;
 	}
 #endif
@@ -368,7 +368,7 @@ static void unresolved_symbol_hook(uc_engine *uc, uint64_t address, uint32_t siz
 {
 	uint64_t ra;
 	uc_reg_read(uc, REG_FP, &ra);
-	printf("Unresolved symbol called from %llx\n", ra - (uintptr_t)dynarec_base_addr);
+	debugLog("Unresolved symbol called from %llx\n", ra - (uintptr_t)dynarec_base_addr);
 	abort();
 }
 #endif
@@ -392,7 +392,7 @@ uintptr_t get_trampoline(const char *name, dynarec_import *funcs, int num_funcs)
 				if (!funcs[k].mapped) {
 					uint32_t nop = 0xD503201F;
 					auto hook = hooks.emplace_back();
-					//printf("%s %llx hook on %llx\n", name, (uintptr_t)funcs[k].trampoline / 4, HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline - (uintptr_t)load_base);
+					//debugLog("%s %llx hook on %llx\n", name, (uintptr_t)funcs[k].trampoline / 4, HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline - (uintptr_t)load_base);
 					uc_hook_add(uc, &hook, UC_HOOK_CODE, (void *)hook_import, NULL, HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline, HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline);
 					uc_mem_write(uc, HOOKS_BASE_ADDRESS + (uintptr_t)funcs[k].trampoline, &nop, 4);
 					funcs[k].mapped = true;
@@ -440,7 +440,7 @@ uintptr_t get_trampoline(const char *name, dynarec_import *funcs, int num_funcs)
 #endif
 	}
 	
-	printf("Unresolved import: %s\n", name);
+	debugLog("Unresolved import: %s\n", name);
 #ifdef USE_INTERPRETER
 	return (uintptr_t)HOOKS_BASE_ADDRESS + HOOKS_BLOCK_SIZE - 4;
 #else
@@ -475,7 +475,7 @@ int so_relocate() {
 					}
 
 					default:
-						printf("Error: unknown relocation type:\n%x\n", type);
+						debugLog("Error: unknown relocation type:\n%x\n", type);
 						break;
 				}
 			}
@@ -521,7 +521,7 @@ uintptr_t next_pc;
 #endif
 
 void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry) {
-	//printf("Run 0x%llx with end_program_token %llx\n", entry - (uintptr_t)text_base, end_program_token);
+	//debugLog("Run 0x%llx with end_program_token %llx\n", entry - (uintptr_t)text_base, end_program_token);
 #ifdef USE_INTERPRETER
 	uintptr_t exit_token = (uintptr_t)load_base;
 	uc_reg_write(uc, REG_FP, &exit_token);
@@ -529,7 +529,7 @@ void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry) {
 	uintptr_t sp, pc, fp;
 	do {
 		uc_reg_read(uc, REG_FP, &fp);
-		//printf("Run 0x%llx with FP: %llx (%llx)\n", entry - (uintptr_t)text_base, fp, fp - exit_token);
+		//debugLog("Run 0x%llx with FP: %llx (%llx)\n", entry - (uintptr_t)text_base, fp, fp - exit_token);
 		err = uc_emu_start(uc, entry, fp, 0, 0);
 		uc_reg_read(uc, UC_ARM64_REG_PC, &entry);
 		if (entry == exit_token)
@@ -539,7 +539,7 @@ void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry) {
 		uc_reg_read(uc, UC_ARM64_REG_SP, &sp);
 		uc_reg_read(uc, UC_ARM64_REG_PC, &pc);
 		uc_reg_read(uc, REG_FP, &fp);
-		printf("Fatal error in Unicorn: %u %s on PC: %llx, SP: %llx, FP: %llx\n", err, uc_strerror(err), pc - (uintptr_t)load_base, sp, fp - (uintptr_t)load_base);
+		debugLog("Fatal error in Unicorn: %u %s on PC: %llx, SP: %llx, FP: %llx\n", err, uc_strerror(err), pc - (uintptr_t)load_base, sp, fp - (uintptr_t)load_base);
 		std::abort();
 	}
 #else
@@ -548,25 +548,25 @@ void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry) {
 	Dynarmic::HaltReason reason = {};
 	while ((reason = jit->Run()) == Dynarmic::HaltReason::UserDefined2) {
 		auto host_next = (void (*)(void *))(native_funcs[*(uint32_t *)jit->GetPC()]);
-		//printf("host_next 0x%llx\n", host_next);
+		//debugLog("host_next 0x%llx\n", host_next);
 		host_next((void*)jit);
 	}
 	if (reason != Dynarmic::HaltReason::UserDefined1) {
-		printf("fiber: Execution ended with failure.\n");
+		debugLog("fiber: Execution ended with failure.\n");
 		std::abort();
 	}
 #endif
 }
 
 void so_execute_init_array(void) {
-	printf("so_execute_init_array called\n");
+	debugLog("so_execute_init_array called\n");
 	for (int i = 0; i < elf_hdr->e_shnum; i++) {
 		char *sh_name = shstrtab + sec_hdr[i].sh_name;
 		if (strcmp(sh_name, ".init_array") == 0) {
 			int (** init_array)() = (int (**)())((uintptr_t)text_base + sec_hdr[i].sh_addr);
 			for (int j = 0; j < sec_hdr[i].sh_size / 8; j++) {
 				if (init_array[j] != 0) {
-					printf("init_array on 0x%llx (%llx)\n", (uintptr_t)init_array[j], (uintptr_t)init_array[j] - (uintptr_t)text_base);
+					debugLog("init_array on 0x%llx (%llx)\n", (uintptr_t)init_array[j], (uintptr_t)init_array[j] - (uintptr_t)text_base);
 					so_run_fiber(so_dynarec, (uintptr_t)init_array[j]);
 				}
 			}
@@ -581,7 +581,7 @@ uintptr_t so_find_addr(const char *symbol) {
 			return (uintptr_t)text_base + syms[i].st_value;
 	}
 
-	printf("Error: could not find symbol:\n%s\n", symbol);
+	debugLog("Error: could not find symbol:\n%s\n", symbol);
 	return 0;
 }
 
@@ -603,7 +603,7 @@ uintptr_t so_find_rel_addr(const char *symbol) {
 		}
 	}
 
-	printf("Error: could not find symbol:\n%s\n", symbol);
+	debugLog("Error: could not find symbol:\n%s\n", symbol);
 	return 0;
 }
 
@@ -634,7 +634,7 @@ uintptr_t so_find_addr_rx(const char *symbol) {
 			return (uintptr_t)syms[i].st_value;
 	}
 
-	printf("Error: could not find symbol:\n%s\n", symbol);
+	debugLog("Error: could not find symbol:\n%s\n", symbol);
 	return 0;
 }
 
@@ -668,7 +668,7 @@ std::optional<std::uint32_t> so_env::MemoryReadCode(std::uint64_t vaddr)
 		return 0xD4000001 | (2 << 5);
 	// found the canary token for returning from top-level function
 	} else if (vaddr == (uintptr_t)end_program_token) {
-		printf("vaddr %p: emitting end_program_token\n", vaddr);
+		debugLog("vaddr %p: emitting end_program_token\n", vaddr);
 		return 0xD4000001 | (0 << 5);
 	}
 	
@@ -685,7 +685,7 @@ void so_env::CallSVC(std::uint32_t swi)
 	case 1:
 		// Yield from guest for a moment to handle host code requested,
 		// leaving this instance available for nested callbacks and whatnot
-		//printf("Halting for host function execution: %p\n", parent->GetPC());
+		//debugLog("Halting for host function execution: %p\n", parent->GetPC());
 		parent->HaltExecution(Dynarmic::HaltReason::UserDefined2);
 		break;
 	case 2:
@@ -693,12 +693,12 @@ void so_env::CallSVC(std::uint32_t swi)
 			// Let's find the .got entry for this function, so we can display an error
 			// message.
 			uintptr_t f1 = parent->GetRegister(16);
-			printf("Unresolved symbol %s\n", so_find_rela_name(f1));
+			debugLog("Unresolved symbol %s\n", so_find_rela_name(f1));
 			parent->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
 		}
 		break;
 	default:
-		printf("Unknown SVC %d\n", swi);
+		debugLog("Unknown SVC %d\n", swi);
 		break;
 	}
 }

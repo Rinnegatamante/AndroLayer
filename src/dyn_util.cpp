@@ -114,7 +114,7 @@ void _glDepthMask(GLboolean flag) {
 }
 
 void _glDepthRangef(GLfloat nearVal, GLfloat farVal) {
-	glDepthRange(nearVal, farVal);
+	glDepthRangef(nearVal, farVal);
 }
 
 void _glDisable(GLenum cap) {
