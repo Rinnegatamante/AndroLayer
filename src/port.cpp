@@ -164,6 +164,30 @@ int PriorityCompHiToLow(const void *key, const void *element) {
 		return 0;
 	return -1;
 }
+int cmpl(const void *key, const void *element) {
+	double keyval = *(double *)key;
+	double elemval = *(double *)element;
+	double diff = keyval - elemval;
+	if (diff <= 0.0) {
+		if (diff < 0.0f) {
+			return -1;
+		} else {
+			keyval = *((double *)key + 1);
+			elemval = *((double *)element + 1);
+			diff = elemval - keyval;
+			if (diff == 0.0)
+				return 0;
+			else if (diff < 0.0)
+				return 1;
+			else
+				return -1;
+		}
+	}
+	return 1;
+}
+int cmph(const void *key, const void *element) {
+	return cmpl(element, key);
+}
 std::unordered_map<uintptr_t, int (*)(const void *, const void *)> qsort_db;
 void qsort_fake(void *base, size_t num, size_t width, int(*compare)(const void *key, const void *element)) {
 	auto native_f = qsort_db.find((uintptr_t)compare);
@@ -344,7 +368,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("glGetProgramiv", _glGetProgramiv),
 	WRAP_FUNC("glGetShaderInfoLog", _glGetShaderInfoLog),
 	WRAP_FUNC("glGetShaderiv", _glGetShaderiv),
-	WRAP_FUNC("glGetString", glGetString_fake),
+	WRAP_FUNC("glGetString", _glGetString),
 	WRAP_FUNC("glGetUniformLocation", _glGetUniformLocation),
 	WRAP_FUNC("glHint", _glHint),
 	WRAP_FUNC("glLinkProgram", _glLinkProgram),
@@ -786,6 +810,8 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_ZNK6P_Text11getPositionEv") + 4), FontCmp});
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_ZN27X_AnimationMessageContainer8destructEv") - 16), AnimationMessageContainerCmp});
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z19priorityCompHiToLowPKvS0_")), PriorityCompHiToLow});
+	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z4cmplPKvS0_")), cmpl});
+	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z4cmphPKvS0_")), cmph});
 	
 	// Filling bsearch native functions database
 	bsearch_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z15RASFileNameCompPKvS0_")), RASFileNameComp});
