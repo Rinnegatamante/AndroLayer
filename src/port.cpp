@@ -144,6 +144,26 @@ int RASFileNameComp(const void *key, const void *element) {
 int FontCmp(const void *key, const void *element) {
 	return *(int *)((uintptr_t)element + 4) - *(int *)((uintptr_t)key + 4);
 }
+int AnimationMessageContainerCmp(const void *key, const void *element) {
+	float *a2 = (float *)key;
+	float *a1 = (float *)element;
+	if (*a1 < *a2)
+		return 1;
+	else if (*a1 == *a2)
+		return 0;
+	return -1;
+}
+int PriorityCompHiToLow(const void *key, const void *element) {
+	int64_t keyval = *(int64_t *)key;
+	int64_t elemval = *(int64_t *)element;
+	float keyfval = *(float *)(keyval + 524);
+	float elemfval = *(float *)(elemval + 524);
+	if (keyfval < elemfval)
+		return 1;
+	else if (keyfval == elemfval)
+		return 0;
+	return -1;
+}
 std::unordered_map<uintptr_t, int (*)(const void *, const void *)> qsort_db;
 void qsort_fake(void *base, size_t num, size_t width, int(*compare)(const void *key, const void *element)) {
 	auto native_f = qsort_db.find((uintptr_t)compare);
@@ -380,7 +400,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("readdir", readdir),
 	WRAP_FUNC("realloc", realloc),
 	WRAP_FUNC("remove", remove),
-	//WRAP_FUNC("setjmp", ret0),
+	WRAP_FUNC("setjmp", ret0),
 	WRAP_FUNC("sin", sind),
 	WRAP_FUNC("sinf", sinf),
 	WRAP_FUNC("snprintf", __aarch64_snprintf),
@@ -694,7 +714,7 @@ void tga_write_func(void *context, void *data, int size) {
 	ctx->offset += size;
 }
 
-uint8_t decomp_buffer[1024 * 1024 * 2];
+uint8_t decomp_buffer[1024 * 1024 * 8];
 uintptr_t loadTGA;
 void loadJPG(void *_this, uint8_t *buf, int size) {
 	// Max Payne doesn't support RLE'd TGA files
@@ -721,12 +741,29 @@ void loadJPG(void *_this, uint8_t *buf, int size) {
 	//fclose(f);
 	
 	//printf("Running loadTGA\n");
+#ifdef USE_INTERPRETER
+	uintptr_t ptr = (uintptr_t)_this;
+	uc_reg_write(uc, UC_ARM64_REG_X0, &ptr);
+	ptr = (uintptr_t)&decomp_buffer[0];
+	uc_reg_write(uc, UC_ARM64_REG_X1, &ptr);
+	ptr = (uintptr_t)&tga_ctx.offset;
+	uc_reg_write(uc, UC_ARM64_REG_X2, &ptr);
+#else
 	so_dynarec->SetRegister(0, (uintptr_t)_this);
 	so_dynarec->SetRegister(1, (uintptr_t)decomp_buffer);
 	so_dynarec->SetRegister(2, tga_ctx.offset);
+#endif
 	so_run_fiber(so_dynarec, loadTGA);
 	
 	//printf("Returning from loadJPG\n");
+}
+
+int OS_ScreenGetHeight(void) {
+  return WINDOW_WIDTH;
+}
+
+int OS_ScreenGetWidth(void) {
+  return WINDOW_HEIGHT;
 }
 
 int exec_patch_hooks(void *dynarec_base_addr) {
@@ -740,6 +777,8 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_ZN7ZIPFile12EntryCompareEPKvS1_")), ZIPFile_EntryCompare});
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z15RASFileNameCompPKvS0_")), RASFileNameComp});
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_ZNK6P_Text11getPositionEv") + 4), FontCmp});
+	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_ZN27X_AnimationMessageContainer8destructEv") - 16), AnimationMessageContainerCmp});
+	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z19priorityCompHiToLowPKvS0_")), PriorityCompHiToLow});
 	
 	// Filling bsearch native functions database
 	bsearch_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z15RASFileNameCompPKvS0_")), RASFileNameComp});
@@ -749,10 +788,12 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	deviceForm = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("deviceForm"));
 	definedDevice = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("definedDevice"));
 	
+#ifndef USE_INTERPRETER
 	// FIXME: There is some issue with libjpeg that causes random mem corruptions. For now we do JPEG->TGA conversion natively and load images as TGA
 	HOOK_FUNC("_ZN7G_Image7loadJPGEPci", loadJPG);
 	loadTGA = (uintptr_t)dynarec_base_addr + so_find_addr_rx("_ZN7G_Image7loadTGAEPc");
-	
+#endif
+
 	// This hook exists just as a guard to know if we're reaching some code we should patch instead
 	HOOK_FUNC("_Z24NVThreadGetCurrentJNIEnvv", NVThreadGetCurrentJNIEnv);
 	
@@ -798,7 +839,8 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	HOOK_FUNC("_Z21NVEventEGLSwapBuffersv", NVEventEGLSwapBuffers);
 	
 	// Override screen size
-	*(int64_t *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("windowSize")) = ((int64_t)WINDOW_HEIGHT << 32) | (int64_t)WINDOW_WIDTH;
+	HOOK_FUNC("_Z17OS_ScreenGetWidthv", OS_ScreenGetWidth);
+	HOOK_FUNC("_Z18OS_ScreenGetHeightv", OS_ScreenGetHeight);
 	
 	// Disable vibration
 	HOOK_FUNC("_Z12VibratePhonei", ret0);

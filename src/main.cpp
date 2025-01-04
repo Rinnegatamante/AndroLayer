@@ -82,8 +82,8 @@ int main(int argc, char** argv) {
 }*/
 
 int setupDynarec() {
-	so_stack = (uint8_t *)memalign(0x100000, ALIGN_MEM(DYNAREC_STACK_SIZE, 0x100000));
-	tpidr_el0 = (uint8_t *)memalign(0x100000, ALIGN_MEM(DYNAREC_TPIDR_SIZE, 0x100000));
+	so_stack = (uint8_t *)memalign(0x1000, ALIGN_MEM(DYNAREC_STACK_SIZE, 0x1000));
+	tpidr_el0 = (uint8_t *)memalign(0x1000, ALIGN_MEM(DYNAREC_TPIDR_SIZE, 0x1000));
 	memset(tpidr_el0, 0, DYNAREC_TPIDR_SIZE);
 	memset(so_stack, 0, DYNAREC_STACK_SIZE);
 #ifdef USE_INTERPRETER
@@ -92,12 +92,12 @@ int setupDynarec() {
 		printf("Failed to setup interpreter with error returned: %u (%s)\n", err, uc_strerror(err));
 		return -1;
 	}
-	err = uc_mem_map_ptr(uc, (uintptr_t)so_stack, ALIGN_MEM(DYNAREC_STACK_SIZE, 0x100000), UC_PROT_ALL, so_stack);
+	err = uc_mem_map_ptr(uc, (uintptr_t)so_stack, ALIGN_MEM(DYNAREC_STACK_SIZE, 0x1000), UC_PROT_ALL, so_stack);
 	if (err) {
 		printf("Failed to map stack with error returned: %u (%s)\n", err, uc_strerror(err));
 		return -1;
 	}
-	err = uc_mem_map_ptr(uc, (uintptr_t)tpidr_el0, ALIGN_MEM(DYNAREC_TPIDR_SIZE, 0x100000), UC_PROT_ALL, tpidr_el0);
+	err = uc_mem_map_ptr(uc, (uintptr_t)tpidr_el0, ALIGN_MEM(DYNAREC_TPIDR_SIZE, 0x1000), UC_PROT_ALL, tpidr_el0);
 	if (err) {
 		printf("Failed to map TPIDR EL0 region with error returned: %u (%s)\n", err, uc_strerror(err));
 		return -1;
