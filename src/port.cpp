@@ -273,6 +273,15 @@ int rand_fake() {
 	return rand_state;
 }
 
+// Redirecting stderr to native one
+extern FILE *stderr_fake;
+size_t fwrite_fake(void *ptr, size_t dim, size_t num, FILE *fp) {
+	if (fp == stderr_fake) {
+		return printf("[stderr] %s\n", ptr);
+	}
+	return fwrite(ptr, dim, num, fp);
+}
+
 /*
  * List of imports to be resolved with native variants
  */
@@ -326,7 +335,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("free", free),
 	WRAP_FUNC("fseek", fseek),
 	WRAP_FUNC("ftell", ftell),
-	WRAP_FUNC("fwrite", fwrite),
+	WRAP_FUNC("fwrite", fwrite_fake),
 	WRAP_FUNC("getc", getc),
 	WRAP_FUNC("getenv", ret0),
 	WRAP_FUNC("gettimeofday", gettimeofday_hook),
