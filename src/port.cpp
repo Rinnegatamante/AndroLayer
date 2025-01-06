@@ -409,6 +409,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("glVertexAttribPointer", _glVertexAttribPointer),
 	WRAP_FUNC("glViewport", _glViewport),
 	WRAP_FUNC("isspace", isspace),
+	WRAP_FUNC("localtime", localtime),
 	WRAP_FUNC("log", logd),
 	WRAP_FUNC("log10f", log10f),
 	WRAP_FUNC("malloc", malloc),
@@ -479,6 +480,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("strtold", strtold),
 	WRAP_FUNC("strtoul", strtoul),
 	WRAP_FUNC("tanf", tanf),
+	WRAP_FUNC("time", time),
 	WRAP_FUNC("tolower", tolower),
 	WRAP_FUNC("toupper", toupper),
 	WRAP_FUNC("towlower", towlower),
@@ -644,6 +646,7 @@ int NVThreadGetCurrentJNIEnv() {
 }
 
 int WarGamepad_GetGamepadType(int padnum) {
+#ifndef NDEBUG
 	int has_joystick = glfwJoystickIsGamepad(GLFW_JOYSTICK_1);
 	if (has_joystick) {
 		const char* name = glfwGetGamepadName(GLFW_JOYSTICK_1);
@@ -651,6 +654,8 @@ int WarGamepad_GetGamepadType(int padnum) {
 	} else {
 		printf("No gamepad detected\n");
 	}
+#endif
+
 	// Fake to a regular controller
 	return 0;
 }
@@ -760,6 +765,19 @@ int OS_ScreenGetWidth(void) {
 	return WINDOW_WIDTH;
 }
 
+void *OS_ThreadLaunch(int (* func)(void *), void *arg, int r2, char *name, int r4, int priority) {
+	// FIXME: Keeping this simple for now, we just execute the thread fully prior returning
+	static char buf[0x80];
+	uintptr_t argptr = (uintptr_t)arg;
+#ifdef USE_INTERPRETER
+	uc_reg_write(uc, UC_ARM64_REG_X0, &arg);
+#else
+	so_dynarec->SetRegister(0, argptr);
+#endif
+	so_run_fiber(so_dynarec, (uintptr_t)func);
+	return buf;
+}
+
 int exec_patch_hooks(void *dynarec_base_addr) {
 	mkdir("./savegames");
 
@@ -783,6 +801,9 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	deviceChip = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("deviceChip"));
 	deviceForm = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("deviceForm"));
 	definedDevice = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("definedDevice"));
+
+	// Hooking OS_ThreadLaunch since game doesn't properly clear thread handles
+	HOOK_FUNC("_Z15OS_ThreadLaunchPFjPvES_jPKci16OSThreadPriority", OS_ThreadLaunch);
 
 	// This hook exists just as a guard to know if we're reaching some code we should patch instead
 	HOOK_FUNC("_Z24NVThreadGetCurrentJNIEnvv", NVThreadGetCurrentJNIEnv);

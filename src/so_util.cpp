@@ -415,7 +415,7 @@ static void unresolved_symbol_hook(uc_engine *uc, uint64_t address, uint32_t siz
 {
 	uint64_t ra;
 	uc_reg_read(uc, REG_FP, &ra);
-	debugLog("Unresolved symbol called from %llx\n", ra - (uintptr_t)dynarec_base_addr);
+	printf("Unresolved symbol called from %llx\n", ra - (uintptr_t)dynarec_base_addr);
 	abort();
 }
 #endif
@@ -753,12 +753,12 @@ void so_env::CallSVC(std::uint32_t swi)
 			// Let's find the .got entry for this function, so we can display an error
 			// message.
 			uintptr_t f1 = so_dynarec->GetRegister(16);
-			debugLog("Unresolved symbol %s\n", so_find_rela_name(f1));
+			printf("Unresolved symbol %s\n", so_find_rela_name(f1));
 			so_dynarec->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
 		}
 		break;
 	default:
-		debugLog("Unknown SVC %d\n", swi);
+		printf("Unknown SVC %d\n", swi);
 		break;
 	}
 }
