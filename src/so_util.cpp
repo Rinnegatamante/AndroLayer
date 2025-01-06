@@ -567,8 +567,10 @@ int so_resolve(dynarec_import *funcs, int num_funcs) {
 	return 0;
 }
 
-#ifdef USE_INTERPRETER
-uintptr_t next_pc;
+#ifdef GDB_ENABLED
+uintptr_t gdb_fiber_pc;
+uintptr_t gdb_fiber_fp;
+uintptr_t gdb_thunk_fp;
 #endif
 
 void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry) {
@@ -581,6 +583,10 @@ void so_run_fiber(Dynarmic::A64::Jit *jit, uintptr_t entry) {
 	do {
 		uc_reg_read(uc, REG_FP, &fp);
 		//debugLog("Run 0x%llx with FP: %llx (%llx)\n", entry - (uintptr_t)text_base, fp, fp - exit_token);
+#ifdef GDB_ENABLED
+		gdb_fiber_pc = entry;
+		gdb_fiber_fp = fp;
+#endif
 		err = uc_emu_start(uc, entry, fp, 0, 0);
 		uc_reg_read(uc, UC_ARM64_REG_PC, &entry);
 		if (entry == exit_token)

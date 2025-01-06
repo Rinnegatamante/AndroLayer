@@ -14,6 +14,10 @@ extern std::vector<uc_hook> hooks;
 extern uintptr_t next_pc;
 #endif
 
+#ifdef GDB_ENABLED
+extern uintptr_t gdb_thunk_fp;
+#endif
+
 template<typename D, typename R, typename... Args>
 struct ThunkImpl {
 	using Tuple = std::tuple<Args...>;
@@ -108,6 +112,9 @@ struct ThunkImpl {
 		uc_reg_read(uc, REG_FP, &addr_next);
 #else
 		uintptr_t addr_next = jit->GetRegister(REG_FP);
+#endif
+#ifdef GDB_ENABLED
+		gdb_thunk_fp = addr_next;
 #endif
 		//debugLog("RA is %llx\n", (uintptr_t)addr_next - (uintptr_t)dynarec_base_addr);
 		
