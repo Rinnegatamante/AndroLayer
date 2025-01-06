@@ -157,8 +157,8 @@ int AnimationMessageContainerCmp(const void *key, const void *element) {
 	return -1;
 }
 int PriorityCompHiToLow(const void *key, const void *element) {
-	int64_t keyval = *(int64_t *)key;
-	int64_t elemval = *(int64_t *)element;
+	uintptr_t keyval = *(uintptr_t *)key;
+	uintptr_t elemval = *(uintptr_t *)element;
 	float keyfval = *(float *)(keyval + 524);
 	float elemfval = *(float *)(elemval + 524);
 	if (keyfval < elemfval)
@@ -260,6 +260,17 @@ double sqrtd(double n) { return sqrt(n); }
 // BIONIC ctype implementation
 size_t __ctype_get_mb_cur_max() {
 	return 1;
+}
+
+// Windows has RAND_MAX set to only 0x7fff and Max Payne relies on larger range, so we reimplement it
+uint32_t rand_state = 0;
+void srand_fake(unsigned int seed) {
+	rand_state = seed;
+}
+
+int rand_fake() {
+	rand_state = ((rand_state * 1103515245) + 12345) & 0x7fffffff;
+	return rand_state;
 }
 
 /*
@@ -430,7 +441,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("putc", putc),
 	WRAP_FUNC("putwc", putwc),
 	WRAP_FUNC("qsort", qsort_fake),
-	WRAP_FUNC("rand", rand),
+	WRAP_FUNC("rand", rand_fake),
 	WRAP_FUNC("readdir", readdir),
 	WRAP_FUNC("realloc", realloc),
 	WRAP_FUNC("remove", remove),
@@ -441,7 +452,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("sprintf", __aarch64_sprintf),
 	WRAP_FUNC("sqrt", sqrtd),
 	WRAP_FUNC("sqrtf", sqrtf),
-	WRAP_FUNC("srand", srand),
+	WRAP_FUNC("srand", srand_fake),
 	WRAP_FUNC("sscanf", __aarch64_sscanf),
 	WRAP_FUNC("stpcpy", stpcpy),
 	WRAP_FUNC("strcasecmp", strcasecmp),
