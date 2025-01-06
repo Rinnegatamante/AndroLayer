@@ -644,57 +644,61 @@ int NVThreadGetCurrentJNIEnv() {
 }
 
 int WarGamepad_GetGamepadType(int padnum) {
+	int has_joystick = glfwJoystickIsGamepad(GLFW_JOYSTICK_1);
+	if (has_joystick) {
+		const char* name = glfwGetGamepadName(GLFW_JOYSTICK_1);
+		printf("Detected %s gamepad\n", name);
+	} else {
+		printf("No gamepad detected\n");
+	}
 	// Fake to a regular controller
 	return 0;
 }
 
 int WarGamepad_GetGamepadButtons(int padnum) {
 	int mask = 0;
-	int count;
-	const unsigned char *buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &count);
-	if (!buttons) {
-		return mask;
+	GLFWgamepadstate state;
+	if (glfwGetGamepadState(GLFW_JOYSTICK_1, &state)) {
+		if (state.buttons[GLFW_GAMEPAD_BUTTON_A])
+			mask |= 0x1;
+		if (state.buttons[GLFW_GAMEPAD_BUTTON_B])
+			mask |= 0x2;
+		if (state.buttons[GLFW_GAMEPAD_BUTTON_X])
+			mask |= 0x4;
+		if (state.buttons[GLFW_GAMEPAD_BUTTON_Y])
+			mask |= 0x8;
+		if (state.buttons[GLFW_GAMEPAD_BUTTON_START])
+			mask |= 0x10;
+		if (state.buttons[GLFW_GAMEPAD_BUTTON_GUIDE])
+			mask |= 0x20;
+		if (state.buttons[GLFW_GAMEPAD_BUTTON_LEFT_BUMPER])
+			mask |= 0x40;
+		if (state.buttons[GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER])
+			mask |= 0x80;
+		if (state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_UP])
+			mask |= 0x100;
+		if (state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_DOWN])
+			mask |= 0x200;
+		if (state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_LEFT])
+			mask |= 0x400;
+		if (state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_RIGHT])
+			mask |= 0x800;
+		if (state.buttons[GLFW_GAMEPAD_BUTTON_LEFT_THUMB])
+			mask |= 0x1000;
+		if (state.buttons[GLFW_GAMEPAD_BUTTON_RIGHT_THUMB])
+			mask |= 0x2000;
 	}
-
-	if (buttons[GLFW_GAMEPAD_BUTTON_A] == GLFW_PRESS)
-		mask |= 0x1;
-	if (buttons[GLFW_GAMEPAD_BUTTON_B] == GLFW_PRESS)
-		mask |= 0x2;
-	if (buttons[GLFW_GAMEPAD_BUTTON_X] == GLFW_PRESS)
-		mask |= 0x4;
-	if (buttons[GLFW_GAMEPAD_BUTTON_Y] == GLFW_PRESS)
-		mask |= 0x8;
-	if (buttons[GLFW_GAMEPAD_BUTTON_START] == GLFW_PRESS)
-		mask |= 0x10;
-	if (buttons[GLFW_GAMEPAD_BUTTON_GUIDE] == GLFW_PRESS)
-		mask |= 0x20;
-	if (buttons[GLFW_GAMEPAD_BUTTON_LEFT_BUMPER] == GLFW_PRESS)
-		mask |= 0x40;
-	if (buttons[GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER] == GLFW_PRESS)
-		mask |= 0x80;
-	if (buttons[GLFW_GAMEPAD_BUTTON_DPAD_UP] == GLFW_PRESS)
-		mask |= 0x100;
-	if (buttons[GLFW_GAMEPAD_BUTTON_DPAD_DOWN] == GLFW_PRESS)
-		mask |= 0x200;
-	if (buttons[GLFW_GAMEPAD_BUTTON_DPAD_LEFT] == GLFW_PRESS)
-		mask |= 0x400;
-	if (buttons[GLFW_GAMEPAD_BUTTON_DPAD_RIGHT] == GLFW_PRESS)
-		mask |= 0x800;
-	if (buttons[GLFW_GAMEPAD_BUTTON_LEFT_THUMB] == GLFW_PRESS)
-		mask |= 0x1000;
-	if (buttons[GLFW_GAMEPAD_BUTTON_RIGHT_THUMB] == GLFW_PRESS)
-		mask |= 0x2000;
 
 	return mask;
 }
 
 float WarGamepad_GetGamepadAxis(int padnum, int axis) {
 	int count;
-	const float *axes = glfwGetJoystickAxes(GLFW_JOYSTICK_1, &count); 	
-
-	if (fabsf(axes[axis]) > 0.2f)
-		return axes[axis];
-
+	GLFWgamepadstate state;
+	if (glfwGetGamepadState(GLFW_JOYSTICK_1, &state)) {
+		if (fabsf(state.axes[axis]) > 0.2f)
+			return state.axes[axis];
+	}
 	return 0.0f;
 }
 
