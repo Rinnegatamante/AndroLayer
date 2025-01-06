@@ -20,12 +20,16 @@ ifeq ($(SANITIZE),1)
 CFLAGS += -fsanitize=undefined
 endif
 
+ifeq ($(GDB_ENABLED),1)
+CXXFLAGS += -DGDB_ENABLED
+endif
+
 ifeq ($(NO_DEBUG),1)
 CXXFLAGS += -DNDEBUG
 endif
 
 ifeq ($(USE_INTERPRETER),1)
-LIBS += -lunicorn
+LIBS += -lunicorn.dll
 CXXFLAGS += -DUSE_INTERPRETER
 endif
 

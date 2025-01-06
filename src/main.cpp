@@ -119,7 +119,6 @@ int setupDynarec() {
 	so_dynarec = new Dynarmic::A64::Jit(so_dynarec_cfg);
 	printf("AARCH64 dynarec inited with address: 0x%llx and TPIDR EL0 pointing at: 0x%llx\n", so_dynarec, tpidr_el0);
 	so_dynarec->SetSP((uintptr_t)so_stack + DYNAREC_STACK_SIZE - 8);
-	so_dynarec_env.parent = so_dynarec;
 #endif
 	return 0;
 }

@@ -720,8 +720,8 @@ std::optional<std::uint32_t> so_env::MemoryReadCode(std::uint64_t vaddr)
 {
 	// found the canary token for unresolved symbols
 	if (vaddr == (uintptr_t)unresolved_stub_token) {
-		uintptr_t f1 = parent->GetRegister(16);
-		uintptr_t f2 = parent->GetRegister(17);
+		uintptr_t f1 = so_dynarec->GetRegister(16);
+		uintptr_t f2 = so_dynarec->GetRegister(17);
 		return 0xD4000001 | (2 << 5);
 	// found the canary token for returning from top-level function
 	} else if (vaddr == (uintptr_t)end_program_token) {
@@ -729,29 +729,33 @@ std::optional<std::uint32_t> so_env::MemoryReadCode(std::uint64_t vaddr)
 		return 0xD4000001 | (0 << 5);
 	}
 	
-	return MemoryRead32(vaddr);
+#ifdef TPIDR_EL0_HACK
+		if ((uintptr_t)vaddr < 0x1000)
+			vaddr += (uintptr_t)tpidr_el0;
+#endif
+		return *(std::uint32_t *)(vaddr);
 }
 void so_env::CallSVC(std::uint32_t swi)
 {
-	uintptr_t pc = parent->GetPC() - 0x4;
+	uintptr_t pc = so_dynarec->GetPC() - 0x4;
 	switch (swi) {
 	case 0:
 		// Execution done
-		parent->HaltExecution();
+		so_dynarec->HaltExecution();
 		break;
 	case 1:
 		// Yield from guest for a moment to handle host code requested,
 		// leaving this instance available for nested callbacks and whatnot
-		//debugLog("Halting for host function execution: %p\n", parent->GetPC());
-		parent->HaltExecution(Dynarmic::HaltReason::UserDefined2);
+		//debugLog("Halting for host function execution: %p\n", so_dynarec->GetPC());
+		so_dynarec->HaltExecution(Dynarmic::HaltReason::UserDefined2);
 		break;
 	case 2:
 		{
 			// Let's find the .got entry for this function, so we can display an error
 			// message.
-			uintptr_t f1 = parent->GetRegister(16);
+			uintptr_t f1 = so_dynarec->GetRegister(16);
 			debugLog("Unresolved symbol %s\n", so_find_rela_name(f1));
-			parent->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
+			so_dynarec->HaltExecution(Dynarmic::HaltReason::MemoryAbort);
 		}
 		break;
 	default:
