@@ -58,12 +58,12 @@ struct ThunkImpl {
 					return (T)reg_val;
 				} else {
 					float reg_val;
-					uc_reg_read(uc, UC_ARM64_REG_S0 + idx_reg,(void*) &reg_val);
+					uc_reg_read(uc, UC_ARM64_REG_S0 + idx_reg, (void*)&reg_val);
 					return (T)reg_val;
 				}
 #else
 				Dynarmic::A64::Vector reg_val = jit->GetVector(idx_reg);
-				return *(T*)&reg_val;
+				return *(T*)&reg_val[0];
 #endif
 			} else if constexpr (std::is_pointer_v<T> || std::is_integral_v<T> || std::is_enum_v<T>) {
 #ifdef USE_INTERPRETER
@@ -142,8 +142,7 @@ struct ThunkImpl {
 #ifdef USE_INTERPRETER
 				uc_reg_write(uc, UC_ARM64_REG_D0, &ret_cast);
 #else
-				uint32_t *alias = (uint32_t*)&ret_cast;
-				jit->SetVector(0, Dynarmic::A64::Vector{alias[0], alias[1]});
+				jit->SetVector(0, Dynarmic::A64::Vector{ret_cast, 0});
 #endif
 			} else {
 #ifdef USE_INTERPRETER
