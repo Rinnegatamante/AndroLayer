@@ -420,7 +420,6 @@ static void unresolved_symbol_hook(uc_engine *uc, uint64_t address, uint32_t siz
 }
 #endif
 
-
 uintptr_t get_trampoline(const char *name, dynarec_import *funcs, int num_funcs)
 {
 #ifdef USE_INTERPRETER
