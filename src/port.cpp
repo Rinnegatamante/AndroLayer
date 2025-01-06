@@ -139,7 +139,10 @@ int ZIPFile_EntryCompare(const void *key, const void *element) {
 	return strcasecmp(*((const char **)((uintptr_t)key + 8)), *((const char **)((uintptr_t)element + 8)));
 }
 int RASFileNameComp(const void *key, const void *element) {
-	return strcasecmp(*(const char **)key, *(const char **)element);
+	uintptr_t k, e;
+	memcpy(&k, key, sizeof(uintptr_t));
+	memcpy(&e, element, sizeof(uintptr_t));
+	return strcasecmp((const char *)k, (const char *)e);
 }
 int FontCmp(const void *key, const void *element) {
 	return *(int *)((uintptr_t)element + 4) - *(int *)((uintptr_t)key + 4);

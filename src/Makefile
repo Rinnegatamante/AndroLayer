@@ -13,8 +13,12 @@ OBJS = \
 	main.o \
 	glad/glad.o
 
-CXXFLAGS = -O3 -fpermissive -g -std=c++20 
+CXXFLAGS = -fpermissive -std=c++20 
 CFLAGS = -O3 -g
+
+ifeq ($(SANITIZE),1)
+CFLAGS += -fsanitize=undefined
+endif
 
 ifeq ($(NO_DEBUG),1)
 CXXFLAGS += -DNDEBUG
@@ -24,6 +28,8 @@ ifeq ($(USE_INTERPRETER),1)
 LIBS += -lunicorn
 CXXFLAGS += -DUSE_INTERPRETER
 endif
+
+CXXFLAGS += $(CFLAGS)
 
 CXX = g++
 CC = gcc

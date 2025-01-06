@@ -155,74 +155,121 @@ void so_free_temp(void) {
 // Hooks to deal with dynamically allocated memory mapping
 uc_hook mem_invalid_hook;
 
-typedef struct {
+struct mem_span {
 	uint64_t start;
 	uint64_t end;
-} mem_page;
-std::vector<mem_page> pages;
+	mem_span *next;
+	mem_span *prev;
+};
 
-bool compareByAddress(const mem_page &a, const mem_page &b)
-{
-    return a.start < b.start;
-}
+mem_span *span_list = nullptr;
+static int span_count = 0;
 
 bool unmappedMemoryHook(uc_engine* uc, uc_mem_type type, u64 start_address, int size, u64 value, void* user_data) {
-	const auto generate_page = [&](u64 base_address) {
-		uc_err err = uc_mem_map_ptr(uc, base_address, 0x1000, UC_PROT_ALL, (void *)base_address);
-		if (err) {
-			if (err != UC_ERR_MAP) {
-				debugLog("Failed to allocate page for unmapped memory: %u (%s)\n", err, uc_strerror(err));
-				abort();
-				return;
-			}
-		} else {
-			mem_page p;
-			p.start = base_address;
-			p.end = base_address + 0x1000;
-			pages.emplace_back(p);
+	const auto do_map = [&](const uint64_t start, const uint64_t end) {
+		if (const auto err = uc_mem_map_ptr(uc, start, end - start, UC_PROT_ALL, (void *)start)) {
+			printf("Failed to map unmapped memory at %p: %u (%s)\n", (void*)start, err, uc_strerror(err));
+			abort();
+			return false;
 		}
+		return true;
 	};
-	
-	if (pages.size() > 256) {
-		std::sort(pages.begin(), pages.end(), compareByAddress);
-		int page_idx = 1;
-		uint64_t start_address = 0xDEADBEEF;
-		uint32_t start_size = pages.size();
-		while (page_idx < pages.size()) {
-			if (pages[page_idx - 1].end == pages[page_idx].start) {
-				uc_mem_unmap(uc, pages[page_idx - 1].start, pages[page_idx - 1].end - pages[page_idx - 1].start);
-				if (start_address == 0xDEADBEEF) {
-					start_address = pages[page_idx - 1].start;
-				}
-				pages.erase(pages.begin() + (page_idx - 1));
-			} else {
-				if (start_address != 0xDEADBEEF) {
-					uc_mem_unmap(uc, pages[page_idx - 1].start, pages[page_idx - 1].end - pages[page_idx - 1].start);
-					uc_mem_map_ptr(uc, start_address, pages[page_idx - 1].end - start_address, UC_PROT_ALL, (void *)start_address);
-					pages[page_idx - 1].start = start_address;
-					start_address = 0xDEADBEEF;
-				}
-				page_idx++;
-			}
-		}
-		if (start_address != 0xDEADBEEF) {
-			uc_mem_unmap(uc, pages[page_idx - 1].start, pages[page_idx - 1].end - pages[page_idx - 1].start);
-			uc_mem_map_ptr(uc, start_address, pages[page_idx - 1].end - start_address, UC_PROT_ALL, (void *)start_address);
-			pages[page_idx - 1].start = start_address;
-		}
-		uint32_t end_size = pages.size();
-		debugLog("Merged contiguous pages. Went from %u pages to %u\n", start_size, end_size);
-	}
-	
-	const u64 start_address_page = start_address & ~u64(0xFFF);
-	const u64 end_address = start_address + size - 1;
 
-	u64 current_address = start_address_page;
-	do {
-		generate_page(current_address);
-		current_address += 0x1000;
-	} while (current_address < end_address);
-	
+	const auto do_unmap = [&](const uint64_t start, const uint64_t end) {
+		if (const auto err = uc_mem_unmap(uc, start, end - start)) {
+			printf("Failed to unmap mapped memory at %p: %u (%s)\n", (void*)start, err, uc_strerror(err));
+			abort();
+			return false;
+		}
+		return true;
+	};
+
+	uint64_t a_start = start_address & ~0xFFFULL;
+	uint64_t a_end = (start_address + size + 0xFFFULL) & ~0xFFFULL;
+
+	if (a_start < 0x1000ULL)
+		return false;
+
+	if (span_list == nullptr) {
+		// list is empty; become head
+		span_list = new mem_span { a_start, a_end, nullptr, nullptr };
+		++span_count;
+		do_map(a_start, a_end);
+		return true;
+	}
+
+	if (a_start <= span_list->start) {
+		// we're at the beginning of the list; check if we can merge
+		if (a_end >= span_list->start) {
+			// yes; just expand the head node
+			do_unmap(span_list->start, span_list->end);
+			span_list->start = a_start;
+			span_list->end = std::max(a_end, span_list->end);
+			do_map(span_list->start, span_list->end);
+		} else {
+			// no; insert ourselves at the start
+			span_list = new mem_span { a_start, a_end, span_list, nullptr };
+			++span_count;
+			span_list->next->prev = span_list;
+			do_map(a_start, a_end);
+		}
+		return true;
+	}
+
+	// find where we fit in
+	mem_span *it = span_list;
+	while (it->next && it->next->start < a_start) {
+		it = it->next;
+	}
+
+	if (it->next == nullptr) {
+		// reached end of list; check if we can merge with the last node
+		if (it->end >= a_start) {
+			// yes; just expand it then
+			do_unmap(it->start, it->end);
+			do_map(it->start, a_end);
+			it->end = a_end;
+		} else {
+			// no; add ourselves to the end
+			it->next = new mem_span { a_start, a_end, nullptr, it };
+			++span_count;
+			do_map(a_start, a_end);
+		}
+		return true;
+	}
+
+	// in the middle somewhere
+	if (it->end >= a_start && it->next->start <= a_end) {
+		// double merge; bridge the gap and remove the right node
+		do_unmap(it->start, it->end);
+		do_unmap(it->next->start, it->next->end);
+		it->end = it->next->end;
+		mem_span *new_next = it->next->next;
+		if (new_next)
+			new_next->prev = it;
+		delete it->next;
+		--span_count;
+		it->next = new_next;
+		do_map(it->start, it->end);
+	} else if (it->end >= a_start) {
+		// left merge; extend left node to include us
+		do_unmap(it->start, it->end);
+		do_map(it->start, a_end);
+		it->end = a_end;
+	} else if (it->next->start <= a_end) {
+		// right merge; extend right node to include us
+		do_unmap(it->next->start, it->next->end);
+		do_map(a_start, it->next->end);
+		it->next->start = a_start;
+	} else {
+		// no merge; insert ourselves in the middle
+		mem_span *new_node = new mem_span { a_start, a_end, it->next, it };
+		++span_count;
+		it->next->prev = new_node;
+		it->next = new_node;
+		do_map(a_start, a_end);
+	}
+
 	return true;
 }
 #endif
@@ -458,18 +505,22 @@ int so_relocate() {
 				Elf64_Sym *sym = &syms[ELF64_R_SYM(rels[j].r_info)];
 
 				int type = ELF64_R_TYPE(rels[j].r_info);
+				uintptr_t target;
 				switch (type) {
 					case R_AARCH64_RELATIVE:
-						*ptr = (uintptr_t)text_base + rels[j].r_addend;
+						target = (uintptr_t)text_base + rels[j].r_addend;
+						memcpy(ptr, &target, sizeof(uintptr_t));
 						break;
 					case R_AARCH64_ABS64:
-						*ptr += (uintptr_t)text_base + sym->st_value + rels[j].r_addend;
+						target = *ptr + (uintptr_t)text_base + sym->st_value + rels[j].r_addend;
+						memcpy(ptr, &target, sizeof(uintptr_t));
 						break;
 					case R_AARCH64_GLOB_DAT:
 					case R_AARCH64_JUMP_SLOT:
 					{
 						if (sym->st_shndx != SHN_UNDEF) {
-							*ptr = (uintptr_t)text_base + sym->st_value + rels[j].r_addend;
+							target = (uintptr_t)text_base + sym->st_value + rels[j].r_addend;
+							memcpy(ptr, &target, sizeof(uintptr_t));
 						}
 						break;
 					}
