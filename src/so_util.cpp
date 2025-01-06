@@ -136,7 +136,7 @@ void hook_arm64(uintptr_t addr, dynarec_hook *dst) {
 #else
 	if (addr == 0)
 		return;
-	memcpy((void *)addr, (void *)dst->trampoline, sizeof(uint32_t) * 5);
+	memcpy((void *)addr, (void *)dst->trampoline, sizeof(uint32_t) * 2);
 #endif
 }
 
