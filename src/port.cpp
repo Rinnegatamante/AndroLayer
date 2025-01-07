@@ -770,7 +770,7 @@ void *OS_ThreadLaunch(int (* func)(void *), void *arg, int r2, char *name, int r
 	static char buf[0x80];
 	uintptr_t argptr = (uintptr_t)arg;
 #ifdef USE_INTERPRETER
-	uc_reg_write(uc, UC_ARM64_REG_X0, &arg);
+	uc_reg_write(uc, UC_ARM64_REG_X0, &argptr);
 #else
 	so_dynarec->SetRegister(0, argptr);
 #endif
