@@ -6,6 +6,7 @@ LIBS = -lglfw3 -lkernel32 -lopengl32 -lglu32 -lgdi32 \
 	-ldynarmic -lfmt -lmcl -lZydis -lopenal
 
 OBJS = \
+	clib.o \
 	dyn_util.o \
 	glad/glad.o \
 	main.o \

@@ -4,14 +4,8 @@
 #include <GLFW/glfw3.h>
 
 #include <dirent.h>
-#include <string.h>
-#include <string>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <stdarg.h>
-#include <math.h>
 
+#include "clib.h"
 #include "dynarec.h"
 #include "so_util.h"
 #include "thunk_gen.h"
@@ -28,20 +22,11 @@
 /*
  * Custom imports implementations
  */
-char *stpcpy(char *s1, char *s2) {
-	strcpy(s1, s2);
-	return &s1[strlen(s1)];
-}
-
 int __android_log_print(int prio, const char *tag, const char *fmt) {
+#ifndef NDEBUG
 	std::string s = parse_format(fmt, 3); // startReg is # of fixed function args + 1
 	debugLog("[%s] %s\n", tag, s.c_str());
-	
-	return 0;
-}
-
-int __cxa_atexit_fake(void (*func) (void *), void *arg, void *dso_handle)
-{
+#endif
 	return 0;
 }
 
@@ -51,7 +36,7 @@ FILE *fopen_fake(char *fname, char *mode) {
 	return f;
 }
 
-// qsort uses AARCH64 functions, so we map them to native variants
+// qsort uses AARCH64 functions, so we have to reimplement the compare functions it calls natively
 int ZIPFile_EntryCompare(const void *key, const void *element) {
 	return strcasecmp(*((const char **)((uintptr_t)key + 8)), *((const char **)((uintptr_t)element + 8)));
 }
@@ -119,95 +104,9 @@ int cmpl(const void *key, const void *element) {
 int cmph(const void *key, const void *element) {
 	return cmpl(element, key);
 }
-std::unordered_map<uintptr_t, int (*)(const void *, const void *)> qsort_db;
-void qsort_fake(void *base, size_t num, size_t width, int(*compare)(const void *key, const void *element)) {
-	auto native_f = qsort_db.find((uintptr_t)compare);
-	if (native_f == qsort_db.end()) {
-		printf("Fatal error: Invalid qsort function: %llx\n", (uintptr_t)compare - (uintptr_t)dynarec_base_addr);
-		abort();
-	}
-	qsort(base, num, width, native_f->second);
-}
-
-// bsearch uses AARCH64 functions, so we map them to native variants
-std::unordered_map<uintptr_t, int (*)(const void *, const void *)> bsearch_db;
-void *bsearch_fake(const void *key, const void *base, size_t num, size_t size, int (*compare)(const void *element1, const void *element2)) {
-	auto native_f = bsearch_db.find((uintptr_t)compare);
-	if (native_f == bsearch_db.end()) {
-		printf("Fatal error: Invalid bsearch function: %llx\n", (uintptr_t)compare - (uintptr_t)dynarec_base_addr);
-		abort();
-	}
-	return bsearch(key, base, num, size, native_f->second);
-}
 
 int ret0() {
 	return 0;
-}
-
-typedef struct {
-	int64_t tv_sec;
-	uint64_t tv_usec;
-} aarch64_timeval;
-
-typedef struct {
-	int tz_minuteswest;
-	int tz_dsttime;
-} aarch64_timezone;
-
-int gettimeofday_hook(aarch64_timeval *tv, aarch64_timezone *tz) {
-	//debugLog("Entering gettimeofday\n");
-	struct timeval t;
-#ifdef __MINGW64__
-	int ret = mingw_gettimeofday(&t, (struct timezone *)tz);
-#else
-	int ret = gettimeofday(&t, (struct timezone *)tz);
-#endif
-	tv->tv_sec = t.tv_sec;
-	tv->tv_usec = t.tv_usec;
-	//debugLog("Exiting gettimeofday\n");
-	return ret;
-}
-
-const GLubyte *glGetString_fake(GLenum name) {
-	// The game miscalculates buffer sizes for compressed textures, so we need to fakely report that we support no compressed format
-	if (name == GL_EXTENSIONS)
-		return (const GLubyte *)"";
-	return glGetString(name);
-}
-
-// Some math functions in C++ have different prototypes and makes it messy with WRAP_FUNC, this workarounds the issue
-double acosd(double n) { return acos(n); }
-double cosd(double n) { return cos(n); }
-double expd(double n) { return exp(n); }
-double fmodd(double n, double n2) { return fmod(n, n2); }
-double logd(double n) { return log(n); }
-double powd(double n, double n2) { return pow(n, n2); }
-double sind(double n) { return sin(n); }
-double sqrtd(double n) { return sqrt(n); }
-
-// BIONIC ctype implementation
-size_t __ctype_get_mb_cur_max() {
-	return 1;
-}
-
-// Windows has RAND_MAX set to only 0x7fff and Max Payne relies on larger range, so we reimplement it
-uint32_t rand_state = 0;
-void srand_fake(unsigned int seed) {
-	rand_state = seed;
-}
-
-int rand_fake() {
-	rand_state = ((rand_state * 1103515245) + 12345) & 0x7fffffff;
-	return rand_state;
-}
-
-// Redirecting stderr to native one
-extern FILE *stderr_fake;
-size_t fwrite_fake(void *ptr, size_t dim, size_t num, FILE *fp) {
-	if (fp == stderr_fake) {
-		return printf("[stderr] %s\n", ptr);
-	}
-	return fwrite(ptr, dim, num, fp);
 }
 
 /*
@@ -217,7 +116,7 @@ size_t fwrite_fake(void *ptr, size_t dim, size_t num, FILE *fp) {
 dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("__android_log_print", __android_log_print),
 	WRAP_FUNC("__ctype_get_mb_cur_max", __ctype_get_mb_cur_max),
-	WRAP_FUNC("__cxa_atexit", __cxa_atexit_fake),
+	WRAP_FUNC("__cxa_atexit", __aarch64__cxa_atexit),
 	WRAP_FUNC("__google_potentially_blocking_region_begin", ret0),
 	WRAP_FUNC("__google_potentially_blocking_region_end", ret0),
 	WRAP_FUNC("AAssetManager_open", ret0),
@@ -228,28 +127,28 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("AAsset_read", ret0),
 	WRAP_FUNC("AAsset_seek", ret0),
 	WRAP_FUNC("abort", abort),
-	WRAP_FUNC("acos", acosd),
+	WRAP_FUNC("acos", __aarch64_acos),
 	WRAP_FUNC("acosf", acosf),
 	WRAP_FUNC("asinf", asinf),
 	WRAP_FUNC("atan2f", atan2f),
 	WRAP_FUNC("atanf", atanf),
 	WRAP_FUNC("atof", atof),
 	WRAP_FUNC("atoi", atoi),
-	WRAP_FUNC("bsearch", bsearch_fake),
+	WRAP_FUNC("bsearch", __aarch64_bsearch),
 	WRAP_FUNC("btowc", btowc),
 	WRAP_FUNC("calloc", calloc),
 	WRAP_FUNC("close", close),
 	WRAP_FUNC("closedir", closedir),
-	WRAP_FUNC("cos", cosd),
+	WRAP_FUNC("cos", __aarch64_cos),
 	WRAP_FUNC("cosf", cosf),
-	WRAP_FUNC("exp", expd),
+	WRAP_FUNC("exp", __aarch64_exp),
 	WRAP_FUNC("fclose", fclose),
 	WRAP_FUNC("feof", feof),
 	WRAP_FUNC("ferror", ferror),
 	WRAP_FUNC("fflush", fflush),
 	WRAP_FUNC("fgetc", fgetc),
 	WRAP_FUNC("fgets", fgets),
-	WRAP_FUNC("fmod", fmodd),
+	WRAP_FUNC("fmod", __aarch64_fmod),
 	WRAP_FUNC("fmodf", fmodf),
 #if 1 // Debug variant with logging
 	WRAP_FUNC("fopen", fopen_fake),
@@ -263,10 +162,10 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("free", free),
 	WRAP_FUNC("fseek", fseek),
 	WRAP_FUNC("ftell", ftell),
-	WRAP_FUNC("fwrite", fwrite_fake),
+	WRAP_FUNC("fwrite", __aarch64_fwrite),
 	WRAP_FUNC("getc", getc),
 	WRAP_FUNC("getenv", ret0),
-	WRAP_FUNC("gettimeofday", gettimeofday_hook),
+	WRAP_FUNC("gettimeofday", __aarch64_gettimeofday),
 	WRAP_FUNC("getwc", getwc),
 	WRAP_FUNC("glActiveTexture", _glActiveTexture),
 	WRAP_FUNC("glAttachShader", _glAttachShader),
@@ -346,7 +245,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("glViewport", _glViewport),
 	WRAP_FUNC("isspace", isspace),
 	WRAP_FUNC("localtime", localtime),
-	WRAP_FUNC("log", logd),
+	WRAP_FUNC("log", __aarch64_log),
 	WRAP_FUNC("log10f", log10f),
 	WRAP_FUNC("malloc", malloc),
 	WRAP_FUNC("mbrtowc", mbrtowc),
@@ -357,7 +256,7 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("memset", memset),
 	WRAP_FUNC("mkdir", mkdir),
 	WRAP_FUNC("nanosleep", nanosleep),
-	WRAP_FUNC("pow", powd),
+	WRAP_FUNC("pow", __aarch64_pow),
 	WRAP_FUNC("powf", powf),
 	WRAP_FUNC("printf", __aarch64_printf),
 	WRAP_FUNC("pthread_once", __aarch64_pthread_once),
@@ -378,19 +277,19 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("pthread_setspecific", ret0),
 	WRAP_FUNC("putc", putc),
 	WRAP_FUNC("putwc", putwc),
-	WRAP_FUNC("qsort", qsort_fake),
-	WRAP_FUNC("rand", rand_fake),
+	WRAP_FUNC("qsort", __aarch64_qsort),
+	WRAP_FUNC("rand", __aarch64_rand),
 	WRAP_FUNC("readdir", readdir),
 	WRAP_FUNC("realloc", realloc),
 	WRAP_FUNC("remove", remove),
 	WRAP_FUNC("setjmp", ret0),
-	WRAP_FUNC("sin", sind),
+	WRAP_FUNC("sin", __aarch64_sin),
 	WRAP_FUNC("sinf", sinf),
 	WRAP_FUNC("snprintf", __aarch64_snprintf),
 	WRAP_FUNC("sprintf", __aarch64_sprintf),
-	WRAP_FUNC("sqrt", sqrtd),
+	WRAP_FUNC("sqrt", __aarch64_sqrt),
 	WRAP_FUNC("sqrtf", sqrtf),
-	WRAP_FUNC("srand", srand_fake),
+	WRAP_FUNC("srand", __aarch64_srand),
 	WRAP_FUNC("sscanf", __aarch64_sscanf),
 	WRAP_FUNC("stpcpy", stpcpy),
 	WRAP_FUNC("strcasecmp", strcasecmp),
@@ -730,10 +629,7 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z19priorityCompLowToHiPKvS0_")), PriorityCompLowToHi});
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z4cmplPKvS0_")), cmpl});
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z4cmphPKvS0_")), cmph});
-	
-	// Filling bsearch native functions database
-	bsearch_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z15RASFileNameCompPKvS0_")), RASFileNameComp});
-	
+
 	// Vars used in AND_SystemInitialize
 	deviceChip = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("deviceChip"));
 	deviceForm = (int *)((uintptr_t)dynarec_base_addr + so_find_addr_rx("deviceForm"));
