@@ -17,6 +17,7 @@
 #include "thunk_gen.h"
 #include "port.h"
 #include "variadics.h"
+#include "aarch64_pthread.h"
 
 #define AL_ALEXT_PROTOTYPES
 #include <AL/al.h>
@@ -42,82 +43,6 @@ int __android_log_print(int prio, const char *tag, const char *fmt) {
 int __cxa_atexit_fake(void (*func) (void *), void *arg, void *dso_handle)
 {
 	return 0;
-}
-
-int pthread_once_fake(pthread_once_t *__once_control, void (*__init_routine) (void)) {
-	if (*__once_control == PTHREAD_ONCE_INIT) {
-		so_run_fiber(so_dynarec, (uintptr_t)__init_routine);
-		*__once_control = !PTHREAD_ONCE_INIT;
-	}
-
-	return 0;
-}
-
-int pthread_create_fake (Dynarmic::A64::Jit *jit, pthread_t *__restrict __newthread,
-			   const pthread_attr_t *__restrict __attr,
-			   void *(*__start_routine) (void *),
-			   void *__restrict __arg)
-{
-	debugLog("NOIMPL: pthread_create called\n");
-	std::abort();
-	return 0;
-}
-
-int pthread_mutex_init_fake(pthread_mutex_t** uid, const int* mutexattr) {
-	pthread_mutex_t *m = (pthread_mutex_t *)calloc(1, sizeof(pthread_mutex_t));
-	if (!m)
-		return -1;
-
-	const int recursive = (mutexattr && *mutexattr == 1);
-	*m = recursive ? PTHREAD_RECURSIVE_MUTEX_INITIALIZER : PTHREAD_MUTEX_INITIALIZER;
-
-	int ret = pthread_mutex_init(m, NULL);
-	if (ret < 0) {
-		free(m);
-		return -1;
-	}
-
-	*uid = m;
-
-	return 0;
-}
-
-int pthread_mutex_destroy_fake(pthread_mutex_t** uid) {
-	if (uid && *uid && (uintptr_t)*uid > 0x8000) {
-		pthread_mutex_destroy(*uid);
-		free(*uid);
-		*uid = NULL;
-	}
-	return 0;
-}
-
-int pthread_mutex_lock_fake(pthread_mutex_t** uid) {
-	int ret = 0;
-	if (!*uid) {
-		ret = pthread_mutex_init_fake(uid, NULL);
-	}
-	else if ((uintptr_t)*uid == 0x4000) {
-		int attr = 1; // recursive
-		ret = pthread_mutex_init_fake(uid, &attr);
-	}
-	if (ret < 0) {
-		return ret;
-	}
-	return pthread_mutex_lock(*uid);
-}
-
-int pthread_mutex_unlock_fake(pthread_mutex_t** uid) {
-	int ret = 0;
-	if (!*uid) {
-		ret = pthread_mutex_init_fake(uid, NULL);
-	}
-	else if ((uintptr_t)*uid == 0x4000) {
-		int attr = 1; // recursive
-		ret = pthread_mutex_init_fake(uid, &attr);
-	}
-	if (ret < 0)
-		return ret;
-	return pthread_mutex_unlock(*uid);
 }
 
 FILE *fopen_fake(char *fname, char *mode) {
@@ -435,8 +360,8 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("pow", powd),
 	WRAP_FUNC("powf", powf),
 	WRAP_FUNC("printf", __aarch64_printf),
-	WRAP_FUNC("pthread_once", pthread_once_fake),
-	WRAP_FUNC("pthread_create", pthread_create_fake),
+	WRAP_FUNC("pthread_once", __aarch64_pthread_once),
+	WRAP_FUNC("pthread_create", __aarch64_pthread_create),
 	WRAP_FUNC("pthread_getspecific", ret0),
 	WRAP_FUNC("pthread_join", pthread_join),
 	WRAP_FUNC("pthread_key_create", ret0),
@@ -444,10 +369,10 @@ dynarec_import dynarec_imports[] = {
 	WRAP_FUNC("pthread_mutexattr_init", ret0),
 	WRAP_FUNC("pthread_mutexattr_settype", ret0),
 	WRAP_FUNC("pthread_mutexattr_destroy", ret0),
-	WRAP_FUNC("pthread_mutex_destroy", pthread_mutex_destroy_fake),
-	WRAP_FUNC("pthread_mutex_init", pthread_mutex_init_fake),
-	WRAP_FUNC("pthread_mutex_lock", pthread_mutex_lock_fake),
-	WRAP_FUNC("pthread_mutex_unlock", pthread_mutex_unlock_fake),
+	WRAP_FUNC("pthread_mutex_destroy", __aarch64_pthread_mutex_destroy),
+	WRAP_FUNC("pthread_mutex_init", __aarch64_pthread_mutex_init),
+	WRAP_FUNC("pthread_mutex_lock", __aarch64_pthread_mutex_lock),
+	WRAP_FUNC("pthread_mutex_unlock", __aarch64_pthread_mutex_unlock),
 	WRAP_FUNC("pthread_self", pthread_self),
 	WRAP_FUNC("pthread_setschedparam", ret0),
 	WRAP_FUNC("pthread_setspecific", ret0),

@@ -6,12 +6,14 @@ LIBS = -lglfw3 -lkernel32 -lopengl32 -lglu32 -lgdi32 \
 	-ldynarmic -lfmt -lmcl -lZydis -lopenal
 
 OBJS = \
-	port.o \
-	variadics.o \
-	so_util.o \
 	dyn_util.o \
+	glad/glad.o \
 	main.o \
-	glad/glad.o
+	port.o \
+	pthread.o \
+	so_util.o \
+	variadics.o
+
 
 CXXFLAGS = -fpermissive -std=c++20 
 CFLAGS = -O3 -g
