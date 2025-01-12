@@ -159,6 +159,17 @@ int PriorityCompHiToLow(const void *key, const void *element) {
 		return 0;
 	return -1;
 }
+int PriorityCompLowToHi(const void *key, const void *element) {
+	uintptr_t keyval = *(uintptr_t *)key;
+	uintptr_t elemval = *(uintptr_t *)element;
+	float keyfval = *(float *)(keyval + 524);
+	float elemfval = *(float *)(elemval + 524);
+	if (keyfval < elemfval)
+		return -1;
+	else if (keyfval == elemfval)
+		return 0;
+	return 1;
+}
 int cmpl(const void *key, const void *element) {
 	double keyval = *(double *)key;
 	double elemval = *(double *)element;
@@ -187,7 +198,7 @@ std::unordered_map<uintptr_t, int (*)(const void *, const void *)> qsort_db;
 void qsort_fake(void *base, size_t num, size_t width, int(*compare)(const void *key, const void *element)) {
 	auto native_f = qsort_db.find((uintptr_t)compare);
 	if (native_f == qsort_db.end()) {
-		debugLog("Fatal error: Invalid qsort function: %llx\n", (uintptr_t)compare - (uintptr_t)dynarec_base_addr);
+		printf("Fatal error: Invalid qsort function: %llx\n", (uintptr_t)compare - (uintptr_t)dynarec_base_addr);
 		abort();
 	}
 	qsort(base, num, width, native_f->second);
@@ -198,7 +209,7 @@ std::unordered_map<uintptr_t, int (*)(const void *, const void *)> bsearch_db;
 void *bsearch_fake(const void *key, const void *base, size_t num, size_t size, int (*compare)(const void *element1, const void *element2)) {
 	auto native_f = bsearch_db.find((uintptr_t)compare);
 	if (native_f == bsearch_db.end()) {
-		debugLog("Fatal error: Invalid bsearch function: %llx\n", (uintptr_t)compare - (uintptr_t)dynarec_base_addr);
+		printf("Fatal error: Invalid bsearch function: %llx\n", (uintptr_t)compare - (uintptr_t)dynarec_base_addr);
 		abort();
 	}
 	return bsearch(key, base, num, size, native_f->second);
@@ -791,6 +802,7 @@ int exec_patch_hooks(void *dynarec_base_addr) {
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_ZNK6P_Text11getPositionEv") + 4), FontCmp});
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_ZN27X_AnimationMessageContainer8destructEv") - 16), AnimationMessageContainerCmp});
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z19priorityCompHiToLowPKvS0_")), PriorityCompHiToLow});
+	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z19priorityCompLowToHiPKvS0_")), PriorityCompLowToHi});
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z4cmplPKvS0_")), cmpl});
 	qsort_db.insert({(uintptr_t)((uintptr_t)dynarec_base_addr + so_find_addr_rx("_Z4cmphPKvS0_")), cmph});
 	

@@ -51,11 +51,11 @@ extern FILE *stderr_fake;
 			var_type = VAR_STRING; \
 			break; \
 		default: \
-			debugLog("Unrecognized format token %c\n", *s); \
+			printf("Unrecognized format token %c\n", *s); \
 			break; \
 		} \
 		if (var_type == VAR_UNKNOWN) { \
-			debugLog("Failure parsing va_list with format %s due to unknown var type\n", format); \
+			printf("Failure parsing va_list with format %s due to unknown var type\n", format); \
 			abort(); \
 		}
 
@@ -388,7 +388,7 @@ int __aarch64_sscanf(const char *buffer, const char *format) {
 	case 8:
 		return sscanf(buffer, format, out_ptrs[0], out_ptrs[1], out_ptrs[2], out_ptrs[3], out_ptrs[4], out_ptrs[5], out_ptrs[6], out_ptrs[7]);
 	default:
-		debugLog("Failure running sscanf on %s. Too many arguments\n", format);
+		printf("Failure running sscanf on %s. Too many arguments\n", format);
 		abort();
 		break;
 	}
