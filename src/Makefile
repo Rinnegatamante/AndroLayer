@@ -17,7 +17,7 @@ OBJS = \
 
 
 CXXFLAGS = -fpermissive -std=c++20 
-CFLAGS = -O3 -g
+CFLAGS = -O3 -g -Idynarmic/src
 
 ifeq ($(SANITIZE),1)
 CFLAGS += -fsanitize=undefined
