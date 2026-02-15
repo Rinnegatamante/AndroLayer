@@ -48,40 +48,6 @@ bool initOpenGL(int major_ver, int minor_ver) {
 	return true;
 }
 
-/*
-int main(int argc, char** argv) {
-	// Set up our memblock for loading the elf onto
-	SoEnv env;
-	env.memory = (u8 *)malloc(MEMBLK_SIZE);
-	env.mem_size = MEMBLK_SIZE;
-	
-	Dynarmic::A32::UserConfig user_config;
-	user_config.callbacks = &env;
-	Dynarmic::A32::Jit cpu{user_config};
-
-	// Execute at least 1 instruction.
-	// (Note: More than one instruction may be executed.)
-	env.ticks_left = 1;
-
-	// Write some code to memory.
-	env.MemoryWrite16(0, 0x0088); // lsls r0, r1, #2
-	env.MemoryWrite16(2, 0xE7FE); // b +#0 (infinite loop)
-
-	// Setup registers.
-	cpu.Regs()[0] = 1;
-	cpu.Regs()[1] = 2;
-	cpu.Regs()[15] = 0; // PC = 0
-	cpu.SetCpsr(0x00000030); // Thumb mode
-
-	// Execute!
-	cpu.Run();
-
-	// Here we would expect cpu.Regs()[0] == 8
-	printf("R0: %u\n", cpu.Regs()[0]);
-
-	return 0;
-}*/
-
 int setupDynarec() {
 	so_stack = (uint8_t *)memalign(0x1000, ALIGN_MEM(DYNAREC_STACK_SIZE, 0x1000));
 	tpidr_el0 = (uint8_t *)memalign(0x1000, ALIGN_MEM(DYNAREC_TPIDR_SIZE, 0x1000));
